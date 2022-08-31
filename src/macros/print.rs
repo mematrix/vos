@@ -16,7 +16,7 @@ macro_rules! println_k {
     ($fmt:expr) => {
         print_k!(concat!($fmt, "\n"))
     };
-    ($fmt:expr, $($args:tt)+) => {
-        print_k!(concat!($fmt, "\n"), $($args)+)
+    ($fmt:expr, $($args:tt)*) => {
+        print_k!(concat!($fmt, "\n"), $($args)*)
     };
 }

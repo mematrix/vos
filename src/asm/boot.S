@@ -1,5 +1,5 @@
 # boot.S
-# bootloader for yOS
+# bootloader for vOS
 
 .option norvc
 .section .data
