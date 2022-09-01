@@ -96,6 +96,7 @@ pub fn init() {
         // and will take some pages of the memory.
         let actual_pages = (size - (alloc_start - start)) / PAGE_SIZE;
         // Clear all pages to make sure that they can be allocated.
+        // todo: memset with *mut u64 (sd instruction instead of sb)
         for i in 0..actual_pages {
             (*ptr.add(i)).clear();
         }

@@ -40,15 +40,16 @@ static const MemMapEntry virt_memmap[] = {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    if let Some(p) = info.location() {
-        println_k!(
-            "Aborting: line {}, file {}: <todo panic message>",
-            p.line(),
-            p.file()
-        );
-    } else {
-        println_k!("Aborting: no information available.");
-    }
+    println_k!("{}", info);
+    // if let Some(p) = info.location() {
+    //     println_k!(
+    //         "Aborting: line {}, file {}: <todo panic message>",
+    //         p.line(),
+    //         p.file()
+    //     );
+    // } else {
+    //     println_k!("Aborting: no information available.");
+    // }
     abort();
 }
 
@@ -63,15 +64,17 @@ fn abort() -> ! {
 }
 
 #[no_mangle]
-/// Do initialization on the machine mode (CPU mode #3)
+/// Do initialization on the machine mode (CPU mode #3).
+/// Returns the SATP value (including the MODE).
 extern "C"
-fn m_init() {
+fn m_init() -> usize {
     let uart = driver::uart::Uart::default();
     uart.init_default();
 
     println_k!("Hello Rust OS");
     println_k!("Start typing, I'll show what you typed!");
 
+    0
 }
 
 #[no_mangle]
