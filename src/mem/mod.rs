@@ -1,4 +1,5 @@
 pub(crate) mod page;
+pub(crate) mod mmu;
 
 
 /// Returns the **aligned** value of `val`.
