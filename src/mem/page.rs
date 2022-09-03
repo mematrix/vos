@@ -1,11 +1,11 @@
 //! Page-based memory management.
 //!
-//! This mod provides some functions to allocate/deallocate the physical memory
+//! This mod provides some functions to allocate/deallocate the **physical memory**
 //! from the HEAP area. The page size is default set to 4KiB.
 
 // todo: add page alloc fn for discontinuous pages: fn a(s: usize, c: fn(*mut()), u: *mut())
 
-use core::{mem::size_of, ptr::null_mut};
+use core::mem::size_of;
 
 use super::align_val;
 use crate::asm::mem_v::{HEAP_START, HEAP_SIZE};
@@ -17,7 +17,7 @@ static mut ALLOC_START: usize = 0;
 // Track the max number than can be allocated.
 static mut ALLOC_PAGES: usize = 0;
 
-const PAGE_ORDER: usize = 12;
+pub const PAGE_ORDER: usize = 12;
 pub const PAGE_SIZE: usize = 1 << 12;
 
 #[repr(u8)]
@@ -81,6 +81,9 @@ impl Page {
 }
 
 /// Initialize the page-based allocation system.
+///
+/// **Note**: This should be called once before any allocate/deallocate function
+/// is called, and ran in the M-mode.
 pub fn init() {
     unsafe {
         let size = HEAP_SIZE;
@@ -111,7 +114,16 @@ pub fn init() {
 
 /// Allocate a page or multiple pages (contiguous allocation).
 /// `pages` is the number of Page to allocate.
-pub fn alloc(pages: usize) -> *mut u8 {
+///
+/// **Note**: This function returns the **physical memory address** which is
+/// aligned to the *page size* (4KiB).
+///
+/// **Call Convention**: Because this function needs to access the physical
+/// memory directly, so it **must** be called from the M-mode (in which the
+/// virtual address equals to the physical address) or in the S-mode with an
+/// identify PTE (in which at least the address \[`HEAP_START` : `ALLOC_START`]
+/// is mapped to the same virtual address and physical address).
+pub fn alloc(pages: usize) -> usize {
     assert!(pages > 0);
     unsafe {
         let num_pages = ALLOC_PAGES;
@@ -144,7 +156,7 @@ pub fn alloc(pages: usize) -> *mut u8 {
 
                     // The Page structures themselves aren't the useful memory.
                     // Instead, there is 1 page per 4096 bytes starting at ALLOC_START.
-                    return (ALLOC_START + PAGE_SIZE * i) as *mut u8;
+                    return ALLOC_START + PAGE_SIZE * i;
                 }
             }
 
@@ -153,14 +165,26 @@ pub fn alloc(pages: usize) -> *mut u8 {
         }
     }
 
-    null_mut()
+    0
 }
 
 /// Allocate and zero a page or multiple pages (contiguous allocation).
 /// `pages` is the number of Page to allocate.
-pub fn zalloc(pages: usize) -> *mut u8 {
+///
+/// **Note**: This function returns the **physical memory address** which is
+/// aligned to the *page size* (4KiB). The returned pages' memory has been
+/// initialized with zero.
+///
+/// **Call Convention**: Similar to the [`alloc`] function, but if it is called
+/// from the S-mode, not only the address \[`HEAP_START` : `ALLOC_START`], but
+/// also the address \[`$ret` : `$ret+pages*4096`] **must** have been mapped in
+/// the identify PTE (in which the virtual address equals to the physical
+/// address).
+///
+/// [`alloc`]: mem::page::alloc
+pub fn zalloc(pages: usize) -> usize {
     let ret = alloc(pages);
-    if !ret.is_null() {
+    if ret != 0 {
         let size = (pages * PAGE_SIZE) / 8;
         let big_ptr = ret as *mut u64;
         for i in 0..size {
@@ -176,16 +200,20 @@ pub fn zalloc(pages: usize) -> *mut u8 {
     ret
 }
 
-/// Deallocate a page by its pointer.
-pub fn dealloc(ptr: *mut u8) {
+/// Deallocate a page by its **physical address**.
+///
+/// **Call Convention**: Similar to the [`alloc`] function.
+///
+/// [`alloc`]: mem::page::alloc
+pub fn dealloc(ptr: usize) {
     // The way we structure this, it will automatically coalesce contiguous pages.
-    debug_assert!(!ptr.is_null());
-    if ptr.is_null() {
+    debug_assert!(ptr != 0);
+    if ptr == 0 {
         return;
     }
 
     unsafe {
-        let page_id = (ptr as usize - ALLOC_START) / PAGE_SIZE;
+        let page_id = (ptr - ALLOC_START) / PAGE_SIZE;
         // Make sure that the page id (index) makes sense.
         assert!(page_id < ALLOC_PAGES);
 
@@ -206,7 +234,8 @@ pub fn dealloc(ptr: *mut u8) {
     }
 }
 
-/// Print all page allocations
+/// Print all page allocations. Called from the M-mode or S-mode with identify
+/// PTE is set.
 /// This is mainly used for debugging.
 pub fn print_page_allocations() {
     unsafe {
