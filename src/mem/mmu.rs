@@ -4,7 +4,7 @@
 //! # Note
 //!
 //! Any MMU function **must** be called from the M-mode or in the S-mode with an
-//! identify PTE is set to cover the PageEntry physical memory. Because read and
+//! identity PTE is set to cover the PageEntry physical memory. Because read and
 //! write operation of the PTE all access the physical memory directly.
 
 use core::ptr::null_mut;
@@ -188,7 +188,7 @@ impl Mode {
 /// Operations of the page table.
 ///
 /// **Note**: All method call of this trait **must** be in the M-mode or the
-/// S-mode with an identify PTE which covers all physical memory that the page
+/// S-mode with an identity PTE which covers all physical memory that the page
 /// table entries store.
 pub trait Table {
     /// Get the **physical address** that the Table is allocated in. This value
@@ -248,7 +248,7 @@ fn cast_to_table<T: Table + 'static>() -> *mut dyn Table {
 /// holds all implementations for the input mode.
 ///
 /// **Call Convention**: This function **must** be called from the M-mode or in the
-/// S-mode with suitable identify PTEs are set.
+/// S-mode with suitable identity PTEs are set.
 pub fn create_root_table(mode: Mode) -> *mut dyn Table {
     match mode {
         Mode::Bare => {
@@ -271,7 +271,7 @@ pub fn create_root_table(mode: Mode) -> *mut dyn Table {
 /// tables.
 ///
 /// **Call Convention**: This function **must** be called from the M-mode or in the
-/// S-mode with suitable identify PTEs are set.
+/// S-mode with suitable identity PTEs are set.
 pub fn copy_root_table(root: &dyn Table) -> *mut dyn Table {
     let pt_addr = alloc(1);
     let addr = root.get_addr();
@@ -295,7 +295,7 @@ pub fn copy_root_table(root: &dyn Table) -> *mut dyn Table {
 /// the corresponding `Mode`.
 ///
 /// **Call Convention**: This function **must** be called from the M-mode or in the
-/// S-mode with suitable identify PTEs are set.
+/// S-mode with suitable identity PTEs are set.
 ///
 /// # Safety
 ///

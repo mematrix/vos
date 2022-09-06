@@ -121,7 +121,7 @@ pub fn init() {
 /// **Call Convention**: Because this function needs to access the physical
 /// memory directly, so it **must** be called from the M-mode (in which the
 /// virtual address equals to the physical address) or in the S-mode with an
-/// identify PTE (in which at least the address \[`HEAP_START` : `ALLOC_START`]
+/// identity PTE (in which at least the address \[`HEAP_START` : `ALLOC_START`]
 /// is mapped to the same virtual address and physical address).
 pub fn alloc(pages: usize) -> usize {
     assert!(pages > 0);
@@ -178,7 +178,7 @@ pub fn alloc(pages: usize) -> usize {
 /// **Call Convention**: Similar to the [`alloc`] function, but if it is called
 /// from the S-mode, not only the address \[`HEAP_START` : `ALLOC_START`], but
 /// also the address \[`$ret` : `$ret+pages*4096`] **must** have been mapped in
-/// the identify PTE (in which the virtual address equals to the physical
+/// the identity PTE (in which the virtual address equals to the physical
 /// address).
 ///
 /// [`alloc`]: mem::page::alloc
@@ -234,7 +234,7 @@ pub fn dealloc(ptr: usize) {
     }
 }
 
-/// Print all page allocations. Called from the M-mode or S-mode with identify
+/// Print all page allocations. Called from the M-mode or S-mode with identity
 /// PTE is set.
 /// This is mainly used for debugging.
 pub fn print_page_allocations() {
