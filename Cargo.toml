@@ -10,3 +10,4 @@ edition = "2021"
 #crate-type = ["staticlib"]
 
 [dependencies]
+fdt = "0.1.4"

@@ -20,13 +20,13 @@ _start:
     bnez t0, 5f
 
     # Set all bytes in the BSS section to zero.
-    la a0, _bss_start
-    la a1, _bss_end
-    bgeu a0, a1, 2f
+    la t0, _bss_start
+    la t1, _bss_end
+    bgeu t0, t1, 2f
 1:
-    sd zero, (a0)
-    addi a0, a0, 8
-    bltu a0, a1, 1b
+    sd zero, (t0)
+    addi t0, t0, 8
+    bltu t0, t1, 1b
 
 2:
     # Init sp register
@@ -35,6 +35,8 @@ _start:
     li t0, (0b11 << 11)
     csrw mstatus, t0
     # mepc register saves the address that mret will jump.
+    # From the firmware (qemu ROM code), a0 is set to the hart_id and a1 is set to
+    # the address of the devicetree blob.
     la t1, m_init
     csrw mepc, t1
     # Set the machine mode trap vector base address.
