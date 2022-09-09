@@ -54,10 +54,7 @@ fn m_init(hart_id: usize, dtb: *const u8) -> usize {
     driver::fdt::show_fdt_standard_nodes(&fdt);
     driver::fdt::dump_fdt(&fdt);
 
-    let chosen = fdt.chosen();
-    driver::fdt::early_init_scan_chosen(&chosen);
-
-    0
+    init::early_setup(&fdt)
 }
 
 #[no_mangle]

@@ -41,6 +41,15 @@ pub const fn align_down_val(val: usize, order: usize) -> usize {
     val & !o
 }
 
+/// Init the physical memory management property.
+pub fn init() {
+    // First init the physical pages
+    page::init();
+
+    // Init bytes-based allocator for the kernel memory management.
+    kmem::init();
+}
+
 /* QEMU RISC-V memory maps (qemu/hw/riscv/virt.c)
 static const MemMapEntry virt_memmap[] = {
     [VIRT_DEBUG] =        {        0x0,         0x100 },
@@ -98,6 +107,7 @@ const VIRT_MEM_MAP: [(usize, usize); 10] = [
 ];
 
 const ORDER_2MB: usize = 21;
+const ORDER_1GB: usize = 30;
 const ENTRY_LEVEL_2MB: u32 = 1;
 const ENTRY_LEVEL_1GB: u32 = 2;
 
@@ -110,7 +120,7 @@ const ENTRY_LEVEL_1GB: u32 = 2;
 /// to 0 with a *kernel address* while it is set to 1 with the *user address*.
 /// According to the RISC-V Spec, the bits \[63:39] and bit \[38] must be equal
 /// and we set it to 0.
-pub fn create_kernel_identity_map() -> *const dyn Table {
+pub fn create_kernel_identity_map() -> *mut dyn Table {
     let table = create_root_table(Mode::Sv39);
 
     // Sv39 mode:
@@ -140,12 +150,27 @@ pub fn create_kernel_identity_map() -> *const dyn Table {
     }
 
     // Map 1GiB-2GiB space (PCIE_MMIO)
-    const ADDR_1G: usize = 0x40000000;
+    const ADDR_1G: usize = 1usize << ORDER_1GB; // 0x40000000;
     root.map(ADDR_1G, ADDR_1G, bits, ENTRY_LEVEL_1GB);
+
+    table
+}
+
+/// Map the DRAM region in the identity table. 1GB per entry, so the region \[addr:addr+len]
+/// will first be aligned to 1GB boundary.
+pub fn map_ram_region_identity(table: *mut dyn Table, addr: usize, len: usize) {
+    // DRAM address should start from 0x8000_0000 (2G)
+    debug_assert!(addr >= 0x8000_0000);
 
     // Map the DRAM space (2GiB - MemEnd)
     let bits = EntryBits::Global.val() | EntryBits::ReadWriteExecute.val();
-    let mut start = ADDR_1G * 2;
+    let mut start = align_down_val(addr, ORDER_1GB);
+    let end = align_val(addr + len, ORDER_1GB);
 
-    table as *const dyn Table
+    let root = unsafe { &mut *table };
+    const LENGTH_1GB: usize = 1usize << ORDER_1GB;
+    while start < end {
+        root.map(start, start, bits, ENTRY_LEVEL_1GB);
+        start += LENGTH_1GB;
+    }
 }
