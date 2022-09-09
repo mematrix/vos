@@ -42,9 +42,9 @@ pub const fn align_down_val(val: usize, order: usize) -> usize {
 }
 
 /// Init the physical memory management property.
-pub fn init() {
+pub fn init(pa_base: usize, mem_size: usize) {
     // First init the physical pages
-    page::init();
+    page::init(pa_base, mem_size);
 
     // Init bytes-based allocator for the kernel memory management.
     kmem::init();
@@ -139,13 +139,18 @@ pub fn create_kernel_identity_map() -> *mut dyn Table {
     //   [  ppn[2] = 0x3  ]          .....
     //         ......            [ ppn = 511 ]
 
+    // todo: handle EntryBits::Access & EntryBits::Dirty.
+
     let root = unsafe { &mut *table };
     // Map 2MiB page
-    let bits = EntryBits::Global.val() | EntryBits::ReadWrite.val();
+    let bits = EntryBits::Access.val() | EntryBits::Dirty.val() |
+        EntryBits::Global.val() | EntryBits::ReadWrite.val();
+    const LENGTH_2MB: usize = 1usize << ORDER_2MB;
     for (mut start, size) in VIRT_MEM_MAP {
         let end = align_val(start + size, ORDER_2MB);
         while start < end {
             root.map(start, start, bits, ENTRY_LEVEL_2MB);
+            start += LENGTH_2MB;
         }
     }
 
@@ -163,7 +168,8 @@ pub fn map_ram_region_identity(table: *mut dyn Table, addr: usize, len: usize) {
     debug_assert!(addr >= 0x8000_0000);
 
     // Map the DRAM space (2GiB - MemEnd)
-    let bits = EntryBits::Global.val() | EntryBits::ReadWriteExecute.val();
+    let bits = EntryBits::Access.val() | EntryBits::Dirty.val() |
+        EntryBits::Global.val() | EntryBits::ReadWriteExecute.val();
     let mut start = align_down_val(addr, ORDER_1GB);
     let end = align_val(addr + len, ORDER_1GB);
 

@@ -1,23 +1,12 @@
 //! Support to parsing Flatten Device Tree blob.
 
-use fdt::{Fdt, node::FdtNode, standard_nodes::Chosen};
-use crate::init::BOOT_COMMAND_LINE;
-
-use core::ptr::copy_nonoverlapping;
+use fdt::{Fdt, node::FdtNode};
 
 
 /// Create a `Fdt` object from the dtb pointer.
 #[inline]
 pub unsafe fn parse_from_ptr<'a>(dtb: *const u8) -> Fdt<'a> {
     Fdt::from_ptr(dtb).expect("Device tree blob must be valid")
-}
-
-pub fn early_init_scan_chosen(chosen: &Chosen) {
-    if let Some(args) = chosen.bootargs() {
-        unsafe {
-            copy_nonoverlapping(args.as_ptr(), BOOT_COMMAND_LINE.as_mut_ptr(), BOOT_COMMAND_LINE.len());
-        }
-    }
 }
 
 /// Show the standard nodes info of the `fdt`. Debug use only.

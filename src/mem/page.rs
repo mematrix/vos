@@ -8,7 +8,7 @@
 use core::mem::size_of;
 
 use super::align_val;
-use crate::asm::mem_v::{HEAP_START, HEAP_SIZE};
+use crate::asm::mem_v::{TEXT_START, HEAP_START, HEAP_SIZE};
 
 
 // We will use ALLOC_START to mark the start of the actual
@@ -84,10 +84,10 @@ impl Page {
 ///
 /// **Note**: This should be called once before any allocate/deallocate function
 /// is called, and ran in the M-mode.
-pub fn init() {
+pub fn init(_pa_base: usize, mem_size: usize) {
     unsafe {
-        let size = HEAP_SIZE;
         let start = HEAP_START;
+        let size = mem_size - (start - TEXT_START);
         let num_pages = size / PAGE_SIZE;
         let ptr = start as *mut Page;
         // Determine where the actual useful memory starts. This will be after all

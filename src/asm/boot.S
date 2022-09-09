@@ -58,6 +58,12 @@ _start:
     li t0, (1 << 3) | (1 << 7) | (1 << 11)
     csrw mie, t0
 
+    # Set the PMP config. Simplely allow all address.
+    li t0, (0b01 << 3) | 0b111
+    csrw pmpcfg0, t0
+    li t0, 0x100000000
+    csrw pmpaddr0, t0
+
     # Now set the S-mode CSRs.
 
     # Setting `sstatus` (supervisor status) register:
