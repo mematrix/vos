@@ -9,6 +9,8 @@ mod init;
 mod driver;
 mod mem;
 mod dev;
+mod proc;
+mod sc;
 
 use core::arch::asm;
 
