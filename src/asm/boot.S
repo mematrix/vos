@@ -93,11 +93,12 @@ _start:
     csrw sie, t2
     # Setting `medeleg` (machine exception delegate) register:
     # Delegate all available exceptions.
-    # 0b 1 0 1 1, 0 0 1 1, 1 1 1 1, 1 1 1 1
+    # 0b 1 0 1 1, 0 0 0 1, 1 1 1 1, 1 1 1 1
     #   15......,11......, 7......, 3......
     # bit 14 and bit 10 are reserved;
-    # bit 11 are read-only (M-mode trap cannot be delegated to S,U mode)
-    li t3, 0xb3ff
+    # bit 11 are read-only (M-mode trap cannot be delegated to S,U mode);
+    # bit 10 is not set because we need to handle the S-mode ecall on the M-mode.
+    li t3, 0xb1ff
     csrw medeleg, t3
     # Setting `stvec` (supervisor trap vector) register:
     # Essentially this is a function pointer, but the last two bits can be 00 or 01

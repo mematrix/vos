@@ -8,6 +8,7 @@ mod macros;
 mod init;
 mod driver;
 mod mem;
+mod dev;
 
 use core::arch::asm;
 
