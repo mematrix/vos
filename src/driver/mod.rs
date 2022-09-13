@@ -1,2 +1,2 @@
-pub(crate) mod fdt;
+pub(crate) mod of;
 pub(crate) mod uart;
