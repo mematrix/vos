@@ -5,6 +5,7 @@ mod asm;
 #[macro_use]
 mod macros;
 
+mod arch;
 mod init;
 mod driver;
 mod mem;

@@ -180,3 +180,14 @@ pub fn map_ram_region_identity(table: *mut dyn Table, addr: usize, len: usize) {
         start += LENGTH_1GB;
     }
 }
+
+/// The `SATP` register contains three fields: mode, address space id, and the first level table
+/// address (level 2 for Sv39). This function helps make the 64-bit register contents based on
+/// those three fields.
+#[inline]
+pub const fn build_satp(mode: Mode, asid: u64, addr: u64) -> usize {
+    const ADDR_MASK: u64 = (1u64 << 44) - 1u64;
+    (mode.val_satp() |
+        (asid & 0xffff) << 44 |
+        (addr >> 12) & ADDR_MASK) as usize
+}
