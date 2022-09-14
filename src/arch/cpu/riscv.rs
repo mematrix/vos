@@ -1,7 +1,7 @@
 //! CPU registers operations and data definitions of the RISC-V platform.
 
-
 use core::arch::asm;
+
 
 #[repr(usize)]
 pub enum Register {
@@ -15,7 +15,8 @@ pub enum Register {
     T2,
     S0,
     S1,
-    A0, /* 10 */
+    /* 10 */
+    A0,
     A1,
     A2,
     A3,
@@ -25,7 +26,8 @@ pub enum Register {
     A7,
     S2,
     S3,
-    S4, /* 20 */
+    /* 20 */
+    S4,
     S5,
     S6,
     S7,
@@ -35,8 +37,9 @@ pub enum Register {
     S11,
     T3,
     T4,
-    T5, /* 30 */
-    T6
+    /* 30 */
+    T5,
+    T6,
 }
 
 pub const fn reg(r: Register) -> usize {
@@ -56,7 +59,8 @@ pub enum FRegister {
     Ft7,
     Fs0,
     Fs1,
-    Fa0, /* 10 */
+    /* 10 */
+    Fa0,
     Fa1,
     Fa2,
     Fa3,
@@ -66,7 +70,8 @@ pub enum FRegister {
     Fa7,
     Fs2,
     Fs3,
-    Fs4, /* 20 */
+    /* 20 */
+    Fs4,
     Fs5,
     Fs6,
     Fs7,
@@ -76,8 +81,9 @@ pub enum FRegister {
     Fs11,
     Ft8,
     Ft9,
-    Ft10, /* 30 */
-    Ft11
+    /* 30 */
+    Ft10,
+    Ft11,
 }
 
 pub const fn freg(r: FRegister) -> usize {

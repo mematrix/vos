@@ -3,10 +3,9 @@
 //! **Note**: After the `/driver/cpu` mod has been initialized, this mod becomes available.
 //! The `SLAB` allocator must be initialized before init this mod.
 
-use core::arch::asm;
 use core::mem::size_of;
 use core::ptr::null_mut;
-use crate::mem::{mmu::Mode, kmem::kzmalloc};
+use crate::mem::{kmem::kzmalloc};
 
 
 /// Represents the CPU info.
