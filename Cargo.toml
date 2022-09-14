@@ -11,3 +11,4 @@ edition = "2021"
 
 [dependencies]
 fdt = "0.1.4"
+log = "0.4"

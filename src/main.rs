@@ -1,6 +1,9 @@
 #![no_main]
 #![no_std]
 
+#[macro_use]
+extern crate log;
+
 mod asm;
 #[macro_use]
 mod macros;
@@ -14,6 +17,7 @@ mod proc;
 mod sc;
 
 use core::arch::asm;
+use log::{Log, Metadata, Record, SetLoggerError};
 
 // #[lang = "eh_personality"]
 // extern fn eh_personality() {}
@@ -43,6 +47,32 @@ fn abort() -> ! {
     }
 }
 
+struct UartLogger;
+
+impl Log for UartLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= log::Level::Trace
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            if record.level() < log::Level::Info {
+                println_k!("[{}][{}:{}]: {}",
+                    record.level(),
+                    record.file().unwrap_or("<NONE>"),
+                    record.line().unwrap_or_default(),
+                    record.args());
+            } else {
+                println_k!("[{}]: {}", record.level(), record.args());
+            }
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static UART_LOGGER: UartLogger = UartLogger;
+
 #[no_mangle]
 /// Do initialization on the machine mode (CPU mode #3).
 /// Returns the SATP value (including the MODE).
@@ -50,6 +80,11 @@ extern "C"
 fn m_init(hart_id: usize, dtb: *const u8) -> usize {
     let uart = driver::uart::Uart::default();
     uart.init_default();
+
+    match log::set_logger(&UART_LOGGER) {
+        Ok(_) => { log::set_max_level(log::LevelFilter::Trace); }
+        Err(_) => { println_k!("Init set logger failed!"); }
+    }
 
     println_k!("Hello Rust OS");
     println_k!("Running in hart#{}, dtb: {:p}", hart_id, dtb);
@@ -85,7 +120,7 @@ fn kmain() {
                 10 | 13 => {
                     // Newline or carriage-return
                     println_k!();
-                },
+                }
                 _ => {
                     print_k!("{}", (c as char).escape_default());
                 }
