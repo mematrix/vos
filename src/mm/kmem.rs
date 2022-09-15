@@ -1,7 +1,7 @@
 //! Kernel memory management for sub-page level: malloc-like allocation system.
 
 use core::{mem::size_of, ptr::null_mut};
-use crate::mem::{align_val, page::{PAGE_SIZE, zalloc}};
+use crate::mm::{align_val, page::{PAGE_SIZE, zalloc}};
 
 
 #[repr(usize)]

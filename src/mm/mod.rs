@@ -42,10 +42,11 @@ pub const fn align_down_val(val: usize, order: usize) -> usize {
 }
 
 /// Init the physical memory management property.
-pub fn init(pa_base: usize, mem_size: usize) {
+pub fn early_init(pa_base: usize, mem_size: usize) {
     // First init the physical pages
     page::init(pa_base, mem_size);
 
+    // todo: move to kernel init phase.
     // Init bytes-based allocator for the kernel memory management.
     kmem::init();
 }

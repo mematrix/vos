@@ -5,7 +5,7 @@
 
 use core::mem::size_of;
 use core::ptr::null_mut;
-use crate::mem::{kmem::kzmalloc};
+use crate::mm::{kmem::kzmalloc};
 
 
 /// Represents the CPU info.

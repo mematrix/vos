@@ -8,7 +8,7 @@
 //! write operation of the PTE all access the physical memory directly.
 
 use core::ptr::null_mut;
-use crate::mem::page::{PAGE_ORDER, PAGE_SIZE, alloc, zalloc, dealloc};
+use crate::mm::page::{PAGE_ORDER, PAGE_SIZE, alloc, zalloc, dealloc};
 
 
 #[repr(u32)]

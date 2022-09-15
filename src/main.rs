@@ -11,7 +11,7 @@ mod macros;
 mod arch;
 mod init;
 mod driver;
-mod mem;
+mod mm;
 mod dev;
 mod proc;
 mod sc;

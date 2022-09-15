@@ -4,7 +4,7 @@ mod early_init;
 
 use fdt::Fdt;
 use crate::asm::mem_v::KERNEL_TABLE;
-use crate::mem::{self, create_kernel_identity_map, map_ram_region_identity};
+use crate::mm::{self, create_kernel_identity_map, map_ram_region_identity};
 
 
 pub const COMMAND_LINE_SIZE: usize = 256;
@@ -31,7 +31,7 @@ pub fn early_setup(fdt: &Fdt) -> usize {
         }
     }
 
-    mem::init(start_addr, mem_size);
+    mm::early_init(start_addr, mem_size);
 
     // Construct the id map.
     let id_map = create_kernel_identity_map();
@@ -43,7 +43,7 @@ pub fn early_setup(fdt: &Fdt) -> usize {
     }
 
     // Debug output
-    mem::page::print_page_allocations();
+    mm::page::print_page_allocations();
 
     let root = unsafe { &*id_map };
     // Test address translation
