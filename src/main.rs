@@ -13,6 +13,7 @@ mod init;
 mod driver;
 mod mm;
 mod dev;
+mod fs;
 mod proc;
 mod sc;
 
