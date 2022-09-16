@@ -1,5 +1,6 @@
 pub(crate) mod of;
 pub(crate) mod uart;
+pub(crate) mod cpu;
 
 use core::num::NonZeroI32;
 use crate::dev::{Device, pm::PmMessage};
@@ -10,6 +11,21 @@ pub struct Metadata {
     pub mod_name: &'static str,
     // bus type: core::cell::Cell<>
     // dev_pm_ops
+}
+
+impl Metadata {
+    #[inline]
+    pub const fn new(name: &'static str, mod_name: &'static str) -> Self {
+        Self {
+            name,
+            mod_name,
+        }
+    }
+
+    #[inline]
+    pub const fn with_name(name: &'static str) -> Self {
+        Self::new(name, "")
+    }
 }
 
 pub trait Driver {

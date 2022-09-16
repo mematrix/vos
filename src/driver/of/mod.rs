@@ -12,7 +12,7 @@ pub struct DeviceId {
 impl DeviceId {
     /// Helper method to construct a `DeviceId` object with empty `name` and `ty` and the
     /// specific `compatible`.
-    pub const fn from_compat(compatible: &'static str) -> Self {
+    pub const fn with_compat(compatible: &'static str) -> Self {
         Self {
             name: "",
             ty: "",
