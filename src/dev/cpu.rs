@@ -21,7 +21,7 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    // We don't construct the `Cpu` object by performing a C-style cast instead of the usual
+    // We construct the `Cpu` object by performing a C-style cast from ptr instead of the usual
     // constructor call, so no ctor method is provided.
 
     #[inline(always)]
@@ -56,7 +56,7 @@ static mut CPU_INFOS: *mut Cpu = null_mut();
 static mut CPU_COUNT: usize = 0;
 
 /// Alloc the memory for all the info of `cpu_count` CPUs.
-pub fn init_early_smp(cpu_count: usize) {
+pub fn init_smp(cpu_count: usize) {
     unsafe {
         let cpus = kzmalloc(size_of::<Cpu>() * cpu_count) as *mut Cpu;
         assert!(!cpus.is_null());

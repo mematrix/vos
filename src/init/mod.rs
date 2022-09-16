@@ -4,6 +4,7 @@ mod early_init;
 
 use fdt::Fdt;
 use crate::asm::mem_v::KERNEL_TABLE;
+use crate::dev::{self, cpu};
 use crate::mm::{self, create_kernel_identity_map, map_ram_region_identity};
 
 
@@ -18,6 +19,7 @@ pub fn early_setup(fdt: &Fdt) -> usize {
     let chosen = fdt.chosen();
     early_init::dt_scan_chosen(&chosen);
 
+    // todo: move to `early_init` mod. use buddy allocator.
     let memory = fdt.memory();
     let mut start_addr = 0usize;
     let mut mem_size = 0usize;
@@ -64,4 +66,17 @@ pub fn early_setup(fdt: &Fdt) -> usize {
     println_k!("Root table mode: {:#x}", mode);
 
     mode | (addr >> 12)
+}
+
+/// Setup when the kernel start. Init the `SLAB` allocator; un-flatten the DeviceTree to
+/// the runtime object; init the kernel data view for specific devices; register device
+/// drivers; create devices and probe the drivers.
+pub fn setup() {
+    // todo: init slab
+
+    // todo: read cpu count from DeviceTree.
+    dev::init(4);
+    let cpu = cpu::get_by_cpuid(0);
+    cpu.set_hart_id(0);
+    cpu.set_freq(10_000_000);   // QEMU frequency is 10MHz
 }

@@ -18,7 +18,7 @@ mod proc;
 mod sc;
 
 use core::arch::asm;
-use log::{Log, Metadata, Record, SetLoggerError};
+use log::{Log, Metadata, Record};
 
 // #[lang = "eh_personality"]
 // extern fn eh_personality() {}
@@ -107,6 +107,8 @@ fn kmain() {
     println_k!();
     println_k!("Now we are in the Supervisor mode.");
     println_k!();
+    init::setup();
+
     println_k!("Start typing, I'll show what you typed!");
     let uart = driver::uart::Uart::default();
 

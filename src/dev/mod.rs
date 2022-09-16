@@ -12,3 +12,9 @@ pub struct Device {
     pub(crate) driver: Option<&'static dyn Driver>,
     pub driver_data: *mut (),
 }
+
+
+/// Init some device data after the DeviceTree has been un-flattened.
+pub fn init(cpu_count: usize) {
+    cpu::init_smp(cpu_count);
+}
