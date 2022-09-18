@@ -7,7 +7,7 @@
 
 use core::mem::size_of;
 
-use super::align_val;
+use super::align_val_up;
 use crate::asm::mem_v::{TEXT_START, HEAP_START, HEAP_SIZE};
 
 
@@ -93,7 +93,7 @@ pub fn init(_pa_base: usize, mem_size: usize) {
         // Determine where the actual useful memory starts. This will be after all
         // Page structures. We also must align the ALLOC_START to a page-boundary
         // (PAGE_SIZE = 4096).
-        let alloc_start = align_val(start + num_pages * size_of::<Page>(), PAGE_ORDER);
+        let alloc_start = align_val_up(start + num_pages * size_of::<Page>(), PAGE_ORDER);
         // Then we need compute the actual pages count that can be allocated,
         // because the Page descriptors are also allocated on the HEAP start address
         // and will take some pages of the memory.

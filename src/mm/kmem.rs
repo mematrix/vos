@@ -1,7 +1,7 @@
 //! Kernel memory management for sub-page level: malloc-like allocation system.
 
 use core::{mem::size_of, ptr::null_mut};
-use crate::mm::{align_val, page::{PAGE_SIZE, zalloc}};
+use crate::mm::{align_val_up, page::{PAGE_SIZE, zalloc}};
 
 
 #[repr(usize)]
@@ -93,7 +93,7 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
     }
 
     unsafe {
-        let size = align_val(sz, 3) + size_of::<AllocList>();
+        let size = align_val_up(sz, 3) + size_of::<AllocList>();
         let mut head = KMEM_HEAD;
         let tail = (head as *mut u8).add(KMEM_ALLOC * PAGE_SIZE) as *mut AllocList;
 
@@ -127,7 +127,7 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 
 /// Allocate sub-page level allocation based on bytes and zero the memory
 pub fn kzmalloc(sz: usize) -> *mut u8 {
-    let size = align_val(sz, 3);
+    let size = align_val_up(sz, 3);
     let ret = kmalloc(size);
 
     if !ret.is_null() {

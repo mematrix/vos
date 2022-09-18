@@ -2,7 +2,9 @@
 
 mod early_init;
 
+use core::mem::size_of;
 use fdt::Fdt;
+use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
 use crate::dev::{self, cpu};
 use crate::mm::{self, create_kernel_identity_map, map_ram_region_identity};
@@ -13,6 +15,22 @@ pub const COMMAND_LINE_SIZE: usize = 256;
 /// Untouched command line saved by arch-special code.
 pub static mut BOOT_COMMAND_LINE: [u8; COMMAND_LINE_SIZE] = [0u8; COMMAND_LINE_SIZE];
 
+extern "C" fn collect_memory_region(s_ptr: *mut u8, user_data: *const ()) -> *mut u8 {
+    let memory = user_data as *const Memory;
+    let memory = unsafe { &*memory };
+    let pair = s_ptr as *mut (usize, usize);
+    let mut idx = 0usize;
+    for region in memory.regions() {
+        if let Some(size) = region.size {
+            // insert.
+        }
+    }
+    unsafe { pair.add(idx).write((0, 0)); }
+
+    // We **must** return the first param value.
+    s_ptr
+}
+
 /// Setup on the early boot time.
 /// Returns the SATP value (including the MODE).
 pub fn early_setup(fdt: &Fdt) -> usize {
@@ -21,6 +39,20 @@ pub fn early_setup(fdt: &Fdt) -> usize {
 
     // todo: move to `early_init` mod. use buddy allocator.
     let memory = fdt.memory();
+    let reg_count = memory.regions().count();
+    if reg_count == 0 {
+        assert!(false, "No memory region");
+    }
+
+    let reg_ptr;
+    unsafe {
+        let mem_size = (reg_count + 1) * size_of::<usize>() * 2;
+        let user_data = &memory as *const _ as *const ();
+        // SAFETY: The callback func matches the requirement:
+        //   - Returns the first param as the return value
+        reg_ptr = mm::write_on_stack(mem_size, collect_memory_region, user_data);
+    }
+
     let mut start_addr = 0usize;
     let mut mem_size = 0usize;
     // Init physical memory region
@@ -36,7 +68,9 @@ pub fn early_setup(fdt: &Fdt) -> usize {
     mm::early_init(start_addr, mem_size);
 
     // Construct the id map.
-    let id_map = create_kernel_identity_map();
+    let map_2mb = mm::virt_qemu::get_mem_map_2mb();
+    let map_1gb = mm::virt_qemu::get_mem_map_1gb();
+    let id_map = create_kernel_identity_map(map_2mb, map_1gb);
     for region in memory.regions() {
         if let Some(size) = region.size {
             let addr = region.starting_address as usize;

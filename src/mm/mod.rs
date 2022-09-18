@@ -14,7 +14,9 @@
 pub(crate) mod page;
 pub(crate) mod mmu;
 pub(crate) mod kmem;
+pub(crate) mod virt_qemu;
 
+use core::arch::asm;
 use mmu::{Table, Mode, EntryBits, create_root_table};
 
 
@@ -26,17 +28,17 @@ use mmu::{Table, Mode, EntryBits, create_root_table};
 ///
 /// This function always rounds up. So the returned value will always be
 /// **not less than** the `val`.
-pub const fn align_val(val: usize, order: usize) -> usize {
+pub const fn align_val_up(val: usize, order: usize) -> usize {
     let o = (1usize << order) - 1;
     (val + o) & !o
 }
 
-/// Returns the **aligned** value of `val`. Similar to [`align_val`], but this
+/// Returns the **aligned** value of `val`. Similar to [`align_val_up`], but this
 /// function aligns value rounds down, it will simple set the least `order` bits
 /// to zero. So the returned value will always be **not greater than** the `val`.
 ///
-/// [`align_val`]: crate::mem::align_val
-pub const fn align_down_val(val: usize, order: usize) -> usize {
+/// [`align_val_up`]: crate::mem::align_val_up
+pub const fn align_val_down(val: usize, order: usize) -> usize {
     let o = (1usize << order) - 1;
     val & !o
 }
@@ -51,66 +53,48 @@ pub fn early_init(pa_base: usize, mem_size: usize) {
     kmem::init();
 }
 
-/* QEMU RISC-V memory maps (qemu/hw/riscv/virt.c)
-static const MemMapEntry virt_memmap[] = {
-    [VIRT_DEBUG] =        {        0x0,         0x100 },
-    [VIRT_MROM] =         {     0x1000,        0xf000 },
-    [VIRT_TEST] =         {   0x100000,        0x1000 },
-    [VIRT_RTC] =          {   0x101000,        0x1000 },
-    [VIRT_CLINT] =        {  0x2000000,       0x10000 },
-    [VIRT_ACLINT_SSWI] =  {  0x2F00000,        0x4000 },
-    [VIRT_PCIE_PIO] =     {  0x3000000,       0x10000 },
-    [VIRT_PLATFORM_BUS] = {  0x4000000,     0x2000000 },
-    [VIRT_PLIC] =         {  0xc000000, VIRT_PLIC_SIZE(VIRT_CPUS_MAX * 2) },
-    [VIRT_APLIC_M] =      {  0xc000000, APLIC_SIZE(VIRT_CPUS_MAX) },
-    [VIRT_APLIC_S] =      {  0xd000000, APLIC_SIZE(VIRT_CPUS_MAX) },
-    [VIRT_UART0] =        { 0x10000000,         0x100 },
-    [VIRT_VIRTIO] =       { 0x10001000,        0x1000 },
-    [VIRT_FW_CFG] =       { 0x10100000,          0x18 },
-    [VIRT_FLASH] =        { 0x20000000,     0x4000000 },
-    [VIRT_IMSIC_M] =      { 0x24000000, VIRT_IMSIC_MAX_SIZE },
-    [VIRT_IMSIC_S] =      { 0x28000000, VIRT_IMSIC_MAX_SIZE },
-    [VIRT_PCIE_ECAM] =    { 0x30000000,    0x10000000 },
-    [VIRT_PCIE_MMIO] =    { 0x40000000,    0x40000000 },
-    [VIRT_DRAM] =         { 0x80000000,           0x0 },
-};
-*/
-
-const VIRT_CPUS_MAX: usize = 1usize << 9;
-const APLIC_MIN_SIZE: usize = 0x4000;
-// const VIRT_IMSIC_MAX_SIZE: usize =
-
-const fn aplic_size(cpus: usize) -> usize {
-    APLIC_MIN_SIZE + align_val(cpus * 32, 14)
+/// Alloc a area on the stack. This will simple return the `sp` register value so the
+/// returned ptr will be valid until the next function call.
+///
+/// **Note**: This allocation does not need a size param, the available memory area
+/// depends on the stack size and current stack frame.
+pub fn alloc_on_stack() -> *mut u8 {
+    unsafe {
+        let ret: usize;
+        asm!("mv {}, sp", out(reg) ret);
+        ret as *mut u8
+    }
 }
 
-const fn virt_plic_size(cpus: usize) -> usize {
-    const VIRT_PLIC_CONTEXT_BASE: usize = 0x200000;
-    const VIRT_PLIC_CONTEXT_STRIDE: usize = 0x1000;
-
-    VIRT_PLIC_CONTEXT_BASE + (cpus * 2) * VIRT_PLIC_CONTEXT_STRIDE
+extern "C" {
+    /// This is a **very dangerous** function, **The caller must guard that the callback func `cb`
+    /// returns its first param value**, otherwise the stack will be broken.
+    pub fn write_on_stack(
+        size: usize,
+        cb: extern "C" fn(*mut u8, *const ()) -> *mut u8,
+        user_data: *const ()) -> *const u8;
 }
+
 
 // 2M = 0x20_0000 = 1 << 21
-/// Memory map list for page level 1 (2MiB per entry).
-const VIRT_MEM_MAP: [(usize, usize); 10] = [
-    // (0x100000, 0x2000),     // TEST and RTC. Lower than 2M, ignore to map
-    (0x2000000, 0x10000),   // CLINT
-    (align_down_val(0x2F00000, ORDER_2MB), 0x4000), // ACLINT_SSWI
-    (0x3000000, 0x10000),   // PCIE_PIO
-    (0x4000000, 0x2000000), // PLATFORM_BUS
-    (0xc000000, virt_plic_size(VIRT_CPUS_MAX)), // PLIC
-    (0xc000000, aplic_size(VIRT_CPUS_MAX)),     // APLIC_M
-    (0xd000000, aplic_size(VIRT_CPUS_MAX)),     // APLIC_S
-    (0x10000000, 0x102000),     // UART and VIRTIO and FW_CFG
-    (0x20000000, 0x4000000),    // FLASH
-    (0x30000000, 0x10000000),   // PCIE_ECAM
-];
-
 const ORDER_2MB: usize = 21;
 const ORDER_1GB: usize = 30;
 const ENTRY_LEVEL_2MB: u32 = 1;
 const ENTRY_LEVEL_1GB: u32 = 2;
+
+#[inline(always)]
+fn map_identity<const ORDER: usize, const LEVEL: u32, const LENGTH: usize>(
+    root: &mut dyn Table,
+    maps: &[(usize, usize)],
+    bits: u32) {
+    for (mut start, size) in maps {
+        let end = align_val_up(start + size, ORDER);
+        while start < end {
+            root.map(start, start, bits, LEVEL);
+            start += LENGTH;
+        }
+    }
+}
 
 /// Create an identity page table. This table is used to map the virtual address
 /// to the same physical address and is used only in the kernel space (S-mode).
@@ -121,7 +105,7 @@ const ENTRY_LEVEL_1GB: u32 = 2;
 /// to 0 with a *kernel address* while it is set to 1 with the *user address*.
 /// According to the RISC-V Spec, the bits \[63:39] and bit \[38] must be equal
 /// and we set it to 0.
-pub fn create_kernel_identity_map() -> *mut dyn Table {
+pub fn create_kernel_identity_map(map_2mb: &[(usize, usize)], map_1gb: &[(usize, usize)]) -> *mut dyn Table {
     let table = create_root_table(Mode::Sv39);
 
     // Sv39 mode:
@@ -147,17 +131,11 @@ pub fn create_kernel_identity_map() -> *mut dyn Table {
     let bits = EntryBits::Access.val() | EntryBits::Dirty.val() |
         EntryBits::Global.val() | EntryBits::ReadWrite.val();
     const LENGTH_2MB: usize = 1usize << ORDER_2MB;
-    for (mut start, size) in VIRT_MEM_MAP {
-        let end = align_val(start + size, ORDER_2MB);
-        while start < end {
-            root.map(start, start, bits, ENTRY_LEVEL_2MB);
-            start += LENGTH_2MB;
-        }
-    }
+    map_identity::<ORDER_2MB, ENTRY_LEVEL_2MB, LENGTH_2MB>(root, map_2mb, bits);
 
-    // Map 1GiB-2GiB space (PCIE_MMIO)
-    const ADDR_1G: usize = 1usize << ORDER_1GB; // 0x40000000;
-    root.map(ADDR_1G, ADDR_1G, bits, ENTRY_LEVEL_1GB);
+    // Map 1GiB page
+    const LENGTH_1GB: usize = 1usize << ORDER_1GB;
+    map_identity::<ORDER_1GB, ENTRY_LEVEL_1GB, LENGTH_1GB>(root, map_1gb, bits);
 
     table
 }
@@ -171,8 +149,8 @@ pub fn map_ram_region_identity(table: *mut dyn Table, addr: usize, len: usize) {
     // Map the DRAM space (2GiB - MemEnd)
     let bits = EntryBits::Access.val() | EntryBits::Dirty.val() |
         EntryBits::Global.val() | EntryBits::ReadWriteExecute.val();
-    let mut start = align_down_val(addr, ORDER_1GB);
-    let end = align_val(addr + len, ORDER_1GB);
+    let mut start = align_val_down(addr, ORDER_1GB);
+    let end = align_val_up(addr + len, ORDER_1GB);
 
     let root = unsafe { &mut *table };
     const LENGTH_1GB: usize = 1usize << ORDER_1GB;

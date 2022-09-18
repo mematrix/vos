@@ -42,3 +42,20 @@ KERNEL_STACK_END: .dword _stack_end
 .section .data
 .global KERNEL_TABLE
 KERNEL_TABLE: .dword 0
+
+
+.global write_on_stack
+write_on_stack:
+    # a0: Size to alloc on stack.
+    # a1: Function to write data: fn(_:*mut u8, _:*const ()) -> *mut u8.
+    #     The fn must return the first param value.
+    # a2: User data forward to the callback fn. *const ().
+    mv t0, sp
+    sub sp, sp, a0
+    mv t1, a1
+    mv a0, t0
+    mv a1, a2
+    jalr t1
+    # Use the returned value to restore the sp register
+    mv sp, a0
+    ret
