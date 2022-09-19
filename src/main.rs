@@ -4,6 +4,7 @@
 
 #[macro_use]
 extern crate log;
+extern crate static_assertions as sa;
 extern crate alloc;
 
 mod asm;
