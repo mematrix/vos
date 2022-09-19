@@ -44,9 +44,9 @@ pub const fn align_val_down(val: usize, order: usize) -> usize {
 }
 
 /// Init the physical memory management property.
-pub fn early_init(pa_base: usize, mem_size: usize) {
+pub fn early_init(mem_regions: &[(usize, usize)]) {
     // First init the physical pages
-    page::init(pa_base, mem_size);
+    page::init(mem_regions);
 
     // todo: move to kernel init phase.
     // Init bytes-based allocator for the kernel memory management.
@@ -68,10 +68,11 @@ pub fn alloc_on_stack() -> *mut u8 {
 
 extern "C" {
     /// This is a **very dangerous** function, **The caller must guard that the callback func `cb`
-    /// returns its first param value**, otherwise the stack will be broken.
+    /// does not write out of bounds: at most `size` bytes is available**, otherwise the stack will
+    /// be broken.
     pub fn write_on_stack(
         size: usize,
-        cb: extern "C" fn(*mut u8, *const ()) -> *mut u8,
+        cb: extern "C" fn(*mut u8, usize, *const ()),
         user_data: *const ()) -> *const u8;
 }
 

@@ -47,15 +47,23 @@ KERNEL_TABLE: .dword 0
 .global write_on_stack
 write_on_stack:
     # a0: Size to alloc on stack.
-    # a1: Function to write data: fn(_:*mut u8, _:*const ()) -> *mut u8.
-    #     The fn must return the first param value.
+    # a1: Function to write data: fn(*mut u8, usize, *const ()).
+    #     First param is the stack mem ptr and the second param is the alloc size.
     # a2: User data forward to the callback fn. *const ().
-    mv t0, sp
+    sd ra, -8(sp)
+    sd fp, -16(sp)
+    mv fp, sp
+    addi sp, sp, -16
+    # Alloc memory of `size` bytes.
     sub sp, sp, a0
     mv t1, a1
-    mv a0, t0
-    mv a1, a2
+    mv a1, a0
+    mv a0, sp
+    # Keep a2 param
     jalr t1
-    # Use the returned value to restore the sp register
-    mv sp, a0
+    # Restore the sp and return stack ptr.
+    mv a0, sp
+    mv sp, fp
+    ld ra, -8(sp)
+    ld fp, -16(sp)
     ret

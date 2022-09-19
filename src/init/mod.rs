@@ -3,6 +3,7 @@
 mod early_init;
 
 use core::mem::size_of;
+use core::ptr::slice_from_raw_parts;
 use fdt::Fdt;
 use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
@@ -15,20 +16,71 @@ pub const COMMAND_LINE_SIZE: usize = 256;
 /// Untouched command line saved by arch-special code.
 pub static mut BOOT_COMMAND_LINE: [u8; COMMAND_LINE_SIZE] = [0u8; COMMAND_LINE_SIZE];
 
-extern "C" fn collect_memory_region(s_ptr: *mut u8, user_data: *const ()) -> *mut u8 {
+/// Collect the memory regions from the DeviceTree and do early mm init.
+extern "C" fn collect_memory_region_and_init(s_ptr: *mut u8, count: usize, user_data: *const ()) {
     let memory = user_data as *const Memory;
     let memory = unsafe { &*memory };
     let pair = s_ptr as *mut (usize, usize);
     let mut idx = 0usize;
     for region in memory.regions() {
         if let Some(size) = region.size {
+            if size == 0usize {
+                continue;
+            }
             // insert.
+            let addr = region.starting_address as usize;
+            let mut ins_pos = idx;
+            while ins_pos > 0usize {
+                let (a, s) = unsafe { pair.add(ins_pos - 1usize).read() };
+                if addr >= a {
+                    break;
+                }
+                unsafe { pair.add(ins_pos).write((a, s)); }
+                ins_pos -= 1usize;
+            }
+            unsafe { pair.add(ins_pos).write((addr, size)); }
+
+            idx += 1;
         }
     }
-    unsafe { pair.add(idx).write((0, 0)); }
+    assert!((idx + 1) * size_of::<(usize, usize)>() <= count);
 
-    // We **must** return the first param value.
-    s_ptr
+    let regions = if idx <= 1usize {
+        slice_from_raw_parts(pair, idx)
+    } else {
+        let total = idx;
+        idx = 1usize;
+        let mut seq_idx = 0usize;
+        let (mut seq_ptr, mut seq_size) = unsafe { pair.add(seq_idx).read() };
+        // coalesce.
+        while idx < total {
+            let (ptr, size) = unsafe { pair.add(idx).read() };
+            if seq_ptr + seq_size == ptr {
+                // Continuous
+                seq_size += size;
+            } else if seq_ptr + seq_size > ptr {
+                // Memory region overlapped
+                warn!("Memory region overlapped: [{:#x}, {:#x}] and [{:#x}, {:#x}].",
+                    seq_ptr, seq_ptr + seq_size, ptr, ptr + size);
+                if seq_ptr + seq_size < ptr + size {
+                    seq_size = ptr + size - seq_ptr;
+                }
+            } else {
+                // Segment
+                unsafe { pair.add(seq_idx).write((seq_ptr, seq_size)); }
+                seq_idx += 1usize;
+                seq_ptr = ptr;
+                seq_size = size;
+            }
+            idx += 1usize;
+        }
+
+        unsafe { pair.add(seq_idx).write((seq_ptr, seq_size)); }
+        seq_idx += 1usize;
+        slice_from_raw_parts(pair, seq_idx)
+    };
+
+    mm::early_init(unsafe { &*regions });
 }
 
 /// Setup on the early boot time.
@@ -40,32 +92,16 @@ pub fn early_setup(fdt: &Fdt) -> usize {
     // todo: move to `early_init` mod. use buddy allocator.
     let memory = fdt.memory();
     let reg_count = memory.regions().count();
-    if reg_count == 0 {
-        assert!(false, "No memory region");
-    }
+    assert!(reg_count > 0, "No memory region");
 
-    let reg_ptr;
+    // Init physical memory region
     unsafe {
-        let mem_size = (reg_count + 1) * size_of::<usize>() * 2;
+        let mem_size = (reg_count + 1) * size_of::<(usize, usize)>();
         let user_data = &memory as *const _ as *const ();
         // SAFETY: The callback func matches the requirement:
-        //   - Returns the first param as the return value
-        reg_ptr = mm::write_on_stack(mem_size, collect_memory_region, user_data);
+        //   - Write at most `mem_size` bytes (guard by the assert).
+        mm::write_on_stack(mem_size, collect_memory_region_and_init, user_data);
     }
-
-    let mut start_addr = 0usize;
-    let mut mem_size = 0usize;
-    // Init physical memory region
-    for region in memory.regions() {
-        if let Some(size) = region.size {
-            start_addr = region.starting_address as usize;
-            mem_size = size;
-            // todo: currently we only handle the first memory region.
-            break;
-        }
-    }
-
-    mm::early_init(start_addr, mem_size);
 
     // Construct the id map.
     let map_2mb = mm::virt_qemu::get_mem_map_2mb();

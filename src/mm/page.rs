@@ -84,10 +84,10 @@ impl Page {
 ///
 /// **Note**: This should be called once before any allocate/deallocate function
 /// is called, and ran in the M-mode.
-pub fn init(_pa_base: usize, mem_size: usize) {
+pub fn init(mem_regions: &[(usize, usize)]) {
     unsafe {
         let start = HEAP_START;
-        let size = mem_size - (start - TEXT_START);
+        let size = HEAP_SIZE - (start - TEXT_START);
         let num_pages = size / PAGE_SIZE;
         let ptr = start as *mut Page;
         // Determine where the actual useful memory starts. This will be after all
