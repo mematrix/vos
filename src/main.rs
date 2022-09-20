@@ -10,6 +10,7 @@ extern crate alloc;
 mod asm;
 #[macro_use]
 mod macros;
+mod util;
 
 mod arch;
 mod init;
