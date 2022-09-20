@@ -18,7 +18,7 @@
 //! The context registers:
 //!
 //! | Registers | Description |
-//! | --------- | ----------- |
+//! | :-------: | ----------- |
 //! | `x0`~`x31` | Generic registers. Note that `x0` is read-only constant zero. |
 //! | `f0`~`f31` | Generic floating registers. More see **`*1*`** |
 //! | `pc` | The instruction counter register. |
@@ -26,19 +26,20 @@
 //! > **`*1*`**: Note: The floating register need to be saved only when the `sstatus->FS`
 //! field's value is 3.
 //!
-//! [`TrapFrame`]: sc::TrapFrame
-//! [`TrapStack`]: sc::cpu::TrapStack
-//! [`TrapStackFrame`]: sc::cpu::TrapStackFrame
+//! [`TrapFrame`]: crate::sc::TrapFrame
+//! [`TrapStack`]: crate::sc::cpu::TrapStack
+//! [`TrapStackFrame`]: crate::sc::cpu::TrapStackFrame
 
 pub(crate) mod cpu;
 
 use core::mem::size_of;
 use crate::mm::page::PAGE_SIZE;
+use crate::sc::cpu::TrapStackFrame;
 
 
 /// Alloc and init the **per-cpu** data.
 pub fn init(cpu_count: usize) {
-    cpu::init_smp(cpu_count);
+    cpu::init_per_cpu_data(cpu_count);
 }
 
 
@@ -47,6 +48,8 @@ pub fn init(cpu_count: usize) {
 /// To make offsets easier, everything will be a usize (8 bytes).
 ///
 /// `kernel_stack` points to the [`KernelStack`] object start address.
+///
+/// [`KernelStack`]: crate::sc::KernelStack
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct TrapFrame {
@@ -57,7 +60,7 @@ pub struct TrapFrame {
     // 512
     pub pc: usize,
     // 520
-    pub cpu_stack: usize,
+    pub cpu_stack: *const TrapStackFrame,
     // 528
     pub kernel_stack: *mut KernelStack,
     // 536
@@ -92,10 +95,10 @@ pub struct TrapFrame {
 /// in the same layout position as the `kernel_stack`) field points to the [`TrapFrame`]
 /// object's start address.
 ///
-/// [`TrapStack`]: sc::cpu::TrapStack
-/// [page]: mm::page
-/// [`KernelStack`]: sc::KernelStack
-/// [`TrapFrame`]: sc::TrapFrame
+/// [page]: crate::mm::page
+/// [`TrapStack`]: crate::sc::cpu::TrapStack
+/// [`KernelStack`]: crate::sc::KernelStack
+/// [`TrapFrame`]: crate::sc::TrapFrame
 #[repr(C)]
 pub struct KernelStackFrame {
     // 0 - 255
@@ -105,18 +108,25 @@ pub struct KernelStackFrame {
     // 512
     pub pc: usize,
     // 520
-    pub cpu_stack: usize,
+    pub cpu_stack: *const TrapStackFrame,
     // 528
     pub user_frame: *mut TrapFrame,
 }
 
 const KERNEL_STACK_SIZE: usize = PAGE_SIZE - size_of::<usize>() - size_of::<KernelStackFrame>();
 
-/// Kernel stack. The high memory stores `KernelStackFrame` to support context switching when running
+/// Kernel stack. The high memory stores [`KernelStackFrame`] to support context switching when running
 /// in kernel mode.
+///
+/// The size of this struct is exactly [`PAGE_SIZE`] bytes (4KiB). As the stack area is defined in low
+/// memory, so the stack pointer should be `&reserved as *const ()` (The stack is grow from high addr
+/// to the low addr).
+///
+/// [`KernelStackFrame`]: crate::sc::KernelStackFrame
+/// [`PAGE_SIZE`]: crate::mm::page::PAGE_SIZE
 #[repr(C)]
 pub struct KernelStack {
-    pub _stack: [u8; KERNEL_STACK_SIZE],
+    _stack: [u8; KERNEL_STACK_SIZE],
     pub reserved: usize,
     pub frame: KernelStackFrame
 }
