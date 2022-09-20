@@ -7,8 +7,8 @@ use core::ptr::slice_from_raw_parts;
 use fdt::Fdt;
 use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
-use crate::dev::{self, cpu};
 use crate::mm::{self, create_kernel_identity_map, map_ram_region_identity};
+use crate::sc::{self, cpu};
 
 
 pub const COMMAND_LINE_SIZE: usize = 256;
@@ -145,7 +145,7 @@ pub fn setup() {
     // todo: init slab
 
     // todo: read cpu count from DeviceTree.
-    dev::init(4);
+    sc::init(4);
     let cpu = cpu::get_by_cpuid(0);
     cpu.set_hart_id(0);
     cpu.set_freq(10_000_000);   // QEMU frequency is 10MHz

@@ -1,4 +1,4 @@
-//! CPU and CPU-related routines. Provides the operations with the CSRs.
+//! CPU and CPU-related routines.
 //!
 //! **Note**: After the `/driver/cpu` mod has been initialized, this mod becomes available.
 //! The `SLAB` allocator must be initialized before init this mod.
@@ -9,7 +9,7 @@ use crate::mm::{kmem::kzmalloc};
 
 
 /// Represents the CPU info.
-pub struct Cpu {
+pub struct CpuInfo {
     /// CPU frequency. We will perform the context switching per 10ms (100 times per second),
     /// so the context switch time is `freq / 100`.
     freq: u64,
@@ -20,7 +20,7 @@ pub struct Cpu {
     //extensions: usize,
 }
 
-impl Cpu {
+impl CpuInfo {
     // We construct the `Cpu` object by performing a C-style cast from ptr instead of the usual
     // constructor call, so no ctor method is provided.
 
@@ -52,13 +52,13 @@ impl Cpu {
     }
 }
 
-static mut CPU_INFOS: *mut Cpu = null_mut();
+static mut CPU_INFOS: *mut CpuInfo = null_mut();
 static mut CPU_COUNT: usize = 0;
 
 /// Alloc the memory for all the info of `cpu_count` CPUs.
 pub fn init_smp(cpu_count: usize) {
     unsafe {
-        let cpus = kzmalloc(size_of::<Cpu>() * cpu_count) as *mut Cpu;
+        let cpus = kzmalloc(size_of::<CpuInfo>() * cpu_count) as *mut CpuInfo;
         assert!(!cpus.is_null());
         CPU_INFOS = cpus;
         CPU_COUNT = cpu_count;
@@ -71,7 +71,7 @@ pub fn get_cpu_count() -> usize {
     }
 }
 
-pub fn get_by_cpuid(cpuid: usize) -> &'static mut Cpu {
+pub fn get_by_cpuid(cpuid: usize) -> &'static mut CpuInfo {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 

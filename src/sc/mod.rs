@@ -30,8 +30,16 @@
 //! [`TrapStack`]: sc::cpu::TrapStack
 //! [`TrapStackFrame`]: sc::cpu::TrapStackFrame
 
+pub(crate) mod cpu;
+
 use core::mem::size_of;
 use crate::mm::page::PAGE_SIZE;
+
+
+/// Alloc and init the **per-cpu** data.
+pub fn init(cpu_count: usize) {
+    cpu::init_smp(cpu_count);
+}
 
 
 /// The trap frame is set into a structure and packed into each hart's `sscratch` register.
