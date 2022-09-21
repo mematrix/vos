@@ -1,6 +1,8 @@
 #![no_main]
 #![no_std]
-#![feature(default_alloc_error_handler)]
+#![feature(default_alloc_error_handler)]    // GlobalAllocator need this.
+#![feature(inline_const)]   // Needed in 'macros/ptr.rs'.
+#![feature(const_ptr_offset_from)]  // Needed in 'macros/ptr.rs'.
 
 #[macro_use]
 extern crate log;
