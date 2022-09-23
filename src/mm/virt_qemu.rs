@@ -1,6 +1,7 @@
 //! Memory maps in the QEMU virt machine.
 
-use super::{align_val_up, align_val_down, ORDER_2MB, ORDER_1GB};
+use crate::util::align::{align_val_down, align_val_up};
+use super::{ORDER_1GB, ORDER_2MB};
 
 /* QEMU RISC-V memory maps (qemu/hw/riscv/virt.c)
 static const MemMapEntry virt_memmap[] = {

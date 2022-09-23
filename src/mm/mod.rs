@@ -17,31 +17,8 @@ pub(crate) mod kmem;
 pub(crate) mod virt_qemu;
 
 use core::arch::asm;
-use mmu::{Table, Mode, EntryBits, create_root_table};
-
-
-/// Returns the **aligned** value of `val`.
-///
-/// An **aligned** value is guaranteed that the least bits (width is specified
-/// by `order`) are set to zero. Therefore, all alignments must be made as a
-/// power of two.
-///
-/// This function always rounds up. So the returned value will always be
-/// **not less than** the `val`.
-pub const fn align_val_up(val: usize, order: usize) -> usize {
-    let o = (1usize << order) - 1;
-    (val + o) & !o
-}
-
-/// Returns the **aligned** value of `val`. Similar to [`align_val_up`], but this
-/// function aligns value rounds down, it will simple set the least `order` bits
-/// to zero. So the returned value will always be **not greater than** the `val`.
-///
-/// [`align_val_up`]: crate::mem::align_val_up
-pub const fn align_val_down(val: usize, order: usize) -> usize {
-    let o = (1usize << order) - 1;
-    val & !o
-}
+use mmu::{create_root_table, EntryBits, Mode, Table};
+use crate::util::align;
 
 /// Init the physical memory management property.
 pub fn early_init(mem_regions: &[(usize, usize)]) {
@@ -89,7 +66,7 @@ fn map_identity<const ORDER: usize, const LEVEL: u32, const LENGTH: usize>(
     maps: &[(usize, usize)],
     bits: u32) {
     for (mut start, size) in maps {
-        let end = align_val_up(start + size, ORDER);
+        let end = align::align_val_up(start + size, ORDER);
         while start < end {
             root.map(start, start, bits, LEVEL);
             start += LENGTH;
@@ -150,8 +127,8 @@ pub fn map_ram_region_identity(table: *mut dyn Table, addr: usize, len: usize) {
     // Map the DRAM space (2GiB - MemEnd)
     let bits = EntryBits::Access.val() | EntryBits::Dirty.val() |
         EntryBits::Global.val() | EntryBits::ReadWriteExecute.val();
-    let mut start = align_val_down(addr, ORDER_1GB);
-    let end = align_val_up(addr + len, ORDER_1GB);
+    let mut start = align::align_val_down(addr, ORDER_1GB);
+    let end = align::align_val_up(addr + len, ORDER_1GB);
 
     let root = unsafe { &mut *table };
     const LENGTH_1GB: usize = 1usize << ORDER_1GB;

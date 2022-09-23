@@ -7,8 +7,8 @@
 
 use core::mem::size_of;
 
-use super::align_val_up;
 use crate::asm::mem_v::{TEXT_START, HEAP_START, HEAP_SIZE};
+use crate::util::align::align_val_up;
 
 
 // We will use ALLOC_START to mark the start of the actual
