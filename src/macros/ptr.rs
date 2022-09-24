@@ -32,7 +32,7 @@ macro_rules! offset_of {
                 // stable since 1.51
                 let field_ptr: *const _ = ptr::addr_of!((*base_ptr).$field);
 
-                // feature(const_ptr_offset_from)
+                // const_ptr_offset_from stable since 1.65
                 let base_addr = base_ptr.cast::<u8>();
                 let field_addr = field_ptr.cast::<u8>();
                 field_addr.offset_from(base_addr) as usize
@@ -45,14 +45,18 @@ macro_rules! offset_of {
 ///
 /// - `ptr`: the pointer to the member.
 /// - `ty`: the type of the container struct this is embedded in.
-/// - `member`: the name of the member within the struct.
+/// - `field`: the name of the member within the struct.
+///
+/// # Safety
+/// - The `ptr` must be the pointer points to the `field` within the struct, otherwise the
+/// result is **Undefined Behavior**.
 #[macro_export]
 macro_rules! container_of {
-    ($ptr:expr, $ty:path, $field:tt) => {
+    ($ptr:expr, $ty:path, $field:tt) => {{
         use ::core::primitive::u8;
         let ptr: *const _ = $ptr;
         ptr.cast::<u8>().sub(offset_of!($ty, $field)).cast::<$ty>()
-    };
+    }};
 }
 
 /// Cast a member of a structure out to the containing structure. Similar to [`container_of!`],
@@ -60,14 +64,18 @@ macro_rules! container_of {
 ///
 /// - `ptr`: the pointer to the member.
 /// - `ty`: the type of the container struct this is embedded in.
-/// - `member`: the name of the member within the struct.
+/// - `field`: the name of the member within the struct.
+///
+/// # Safety
+/// - The `ptr` must be the pointer points to the `field` within the struct, otherwise the
+/// result is **Undefined Behavior**.
 ///
 /// [`container_of!`]: container_of
 #[macro_export]
 macro_rules! container_of_mut {
-    ($ptr:expr, $ty:path, $field:tt) => {
+    ($ptr:expr, $ty:path, $field:tt) => {{
         use ::core::primitive::u8;
         let ptr: *mut _ = $ptr;
         ptr.cast::<u8>().sub(offset_of!($ty, $field)).cast::<$ty>()
-    };
+    }};
 }

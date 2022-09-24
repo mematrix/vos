@@ -2,7 +2,6 @@
 #![no_std]
 #![feature(default_alloc_error_handler)]    // GlobalAllocator need this.
 #![feature(inline_const)]   // Needed in 'macros/ptr.rs'.
-#![feature(const_ptr_offset_from)]  // Needed in 'macros/ptr.rs'.
 
 #[macro_use]
 extern crate log;
@@ -80,6 +79,45 @@ impl Log for UartLogger {
 
 static UART_LOGGER: UartLogger = UartLogger;
 
+//////// TEST offset_of! //////////////
+
+#[derive(Default)]
+struct RustOffsetTest {
+    pub _padding: u8,
+    pub align: u32,
+    pub align64: u64,
+    pub align8: u8,
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct COffsetTest {
+    pub _padding: u8,
+    pub align: u32,
+    pub align64: u64,
+    pub align8: u8,
+}
+
+#[repr(C, packed)]
+#[derive(Default)]
+struct COffsetPackedTest {
+    pub _padding: u8,
+    pub align: u32,
+    pub align64: u64,
+    pub align8: u8,
+}
+
+#[repr(C, packed(4))]
+#[derive(Default)]
+struct COffsetAlignTest {
+    pub _padding: u8,
+    pub align: u32,
+    pub align64: u64,
+    pub align8: u8,
+}
+
+///////////// END TEST ////////////////
+
 #[no_mangle]
 /// Do initialization on the machine mode (CPU mode #3).
 /// Returns the SATP value (including the MODE).
@@ -114,6 +152,34 @@ fn kmain() {
     println_k!("Now we are in the Supervisor mode.");
     println_k!();
     init::setup();
+
+    macro_rules! show_offset_test {
+        ($ty:tt) => {{
+            let off_test: $ty = Default::default();
+            println_k!("Show info for type: {}", stringify!($ty));
+            println_k!(" * size_of: {}", core::mem::size_of::<$ty>());
+            println_k!(" * align_of: {}", core::mem::align_of::<$ty>());
+            println_k!(" * offset/align: {}", offset_of!($ty, align));
+            println_k!(" * offset/align64: {}", offset_of!($ty, align64));
+            println_k!(" * offset/align8: {}", offset_of!($ty, align8));
+            println_k!(" * ptr: {:p}", &off_test);
+            let ptr_a32 = core::ptr::addr_of!(off_test.align);
+            let ptr = unsafe { container_of!(ptr_a32, $ty, align) };
+            println_k!(" * ptr/align: {:p}, container: {:p}", ptr_a32, ptr);
+            let ptr_a64 = core::ptr::addr_of!(off_test.align64);
+            let ptr = unsafe { container_of!(ptr_a64, $ty, align64) };
+            println_k!(" * ptr/align64: {:p}, container: {:p}", ptr_a64, ptr);
+            let ptr_a8 = core::ptr::addr_of!(off_test.align8);
+            let ptr = unsafe { container_of!(ptr_a8, $ty, align8) };
+            println_k!(" * ptr/align8: {:p}, container: {:p}", ptr_a8, ptr);
+            println_k!();
+        }};
+    }
+
+    show_offset_test!(RustOffsetTest);
+    show_offset_test!(COffsetTest);
+    show_offset_test!(COffsetPackedTest);
+    show_offset_test!(COffsetAlignTest);
 
     println_k!("Start typing, I'll show what you typed!");
     let uart = driver::uart::Uart::default();
