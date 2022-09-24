@@ -1,4 +1,5 @@
 mod boot_asm;
+mod m_trap_asm;
 mod trap_asm;
 mod mem_asm;
 

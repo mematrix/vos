@@ -40,7 +40,7 @@ _start:
     la t1, m_init
     csrw mepc, t1
     # Set the machine mode trap vector base address.
-    la t2, asm_trap_vector
+    la t2, m_asm_trap_handler
     csrw mtvec, t2
 
     la ra, 3f
@@ -103,9 +103,9 @@ _start:
     csrw medeleg, t3
     # Setting `stvec` (supervisor trap vector) register:
     # Essentially this is a function pointer, but the last two bits can be 00 or 01
-    # 00        : All exceptions set pc to BASE
-    # 01        : Asynchronous interrupts set pc to BASE + 4 x scause
-    la t4, asm_trap_vector
+    # 00  : All exceptions set pc to BASE
+    # 01  : Asynchronous interrupts set pc to BASE + 4 x scause
+    la t4, asm_trap_handler
     csrw stvec, t4
     # m_init() is required to return back the SATP value (including MODE) via a0
     csrw satp, a0
