@@ -26,11 +26,12 @@
 //! > **`*1*`**: Note: The floating register need to be saved only when the `sstatus->FS`
 //! field's value is 3.
 //!
-//! [`TrapFrame`]: crate::sc::TrapFrame
-//! [`TrapStack`]: crate::sc::cpu::TrapStack
-//! [`TrapStackFrame`]: crate::sc::cpu::TrapStackFrame
+//! [`TrapFrame`]: self::TrapFrame
+//! [`TrapStack`]: self::cpu::TrapStack
+//! [`TrapStackFrame`]: self::cpu::TrapStackFrame
 
 pub(crate) mod cpu;
+mod trap;
 
 use core::mem::size_of;
 use crate::mm::page::PAGE_SIZE;
@@ -49,7 +50,7 @@ pub fn init(cpu_count: usize) {
 ///
 /// `kernel_stack` points to the [`KernelStack`] object start address.
 ///
-/// [`KernelStack`]: crate::sc::KernelStack
+/// [`KernelStack`]: self::KernelStack
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct TrapFrame {
@@ -96,9 +97,9 @@ pub struct TrapFrame {
 /// object's start address.
 ///
 /// [page]: crate::mm::page
-/// [`TrapStack`]: crate::sc::cpu::TrapStack
-/// [`KernelStack`]: crate::sc::KernelStack
-/// [`TrapFrame`]: crate::sc::TrapFrame
+/// [`TrapStack`]: self::cpu::TrapStack
+/// [`KernelStack`]: self::KernelStack
+/// [`TrapFrame`]: self::TrapFrame
 #[repr(C)]
 pub struct KernelStackFrame {
     // 0 - 255
