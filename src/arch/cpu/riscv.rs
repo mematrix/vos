@@ -92,6 +92,7 @@ pub const fn freg(r: FRegister) -> usize {
 
 ////////////////// Supervisor CSRs R/W ////////////////////
 
+/// Read `sstatus` register value.
 pub fn sstatus_read() -> usize {
     unsafe {
         let rval;
@@ -100,9 +101,34 @@ pub fn sstatus_read() -> usize {
     }
 }
 
+/// Write `val` to `sstatus` register.
 pub fn sstatus_write(val: usize) {
     unsafe {
         asm!("csrw sstatus, {}", in(reg) val);
+    }
+}
+
+/// Clear `SIE` bit of the `sstatus` register, return the **old** `sstatus` reg value. To restore the
+/// old interrupt status, if no other operations changed the `sstatus` value, call [`sstatus_write`]
+/// with the returned value.
+///
+/// [`sstatus_write`]: self::sstatus_write
+pub fn sstatus_cli() -> usize {
+    unsafe {
+        let rd;
+        // `sstatus` bit 1 -> sie
+        asm!("csrrci {}, sstatus, 0b0010", out(reg) rd);
+        rd
+    }
+}
+
+/// Set `SIE` bit of the `sstatus` register. Not like the [`sstatus_cli`], this function does not
+/// return the old `sstatus` reg value.
+///
+/// [`sstatus_cli`]: self::sstatus_cli
+pub fn sstatus_sti() {
+    unsafe {
+        asm!("csrrsi x0, sstatus, 0b0010");
     }
 }
 

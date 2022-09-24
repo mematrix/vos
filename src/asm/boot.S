@@ -67,18 +67,19 @@ _start:
     # Now set the S-mode CSRs.
 
     # Setting `sstatus` (supervisor status) register:
-    # 1 << 8    : Supervisor's previous protection mode is 1 (SPP=1 [Supervisor]).
-    # 1 << 5    : Supervisor's previous interrupt-enable bit is 1 (SPIE=1 [Enabled]).
-    # 1 << 1    : Supervisor's interrupt-enable bit will be set to 1 after sret.
-    li t0, (1 << 8) | (1 << 5)
+    # 1 << 8  : Supervisor's previous protection mode is 1 (SPP=1 [Supervisor]).
+    # 1 << 5  : Supervisor's previous interrupt-enable bit is 0 (SPIE=0 [Disabled]).
+    # 1 << 1  : Supervisor's interrupt-enable bit will be set to SPIE after sret.
+    # We will turn on the interrupts after enter the kernel.
+    li t0, (1 << 8)
     csrw sstatus, t0
     # The kmain Rust fn will run in S-mode.
     la t1, kmain
     csrw sepc, t1
     # Setting `mideleg` (machine interrupt delegate) register:
-    # 1 << 1   : Software interrupt delegated to supervisor mode
-    # 1 << 5   : Timer interrupt delegated to supervisor mode
-    # 1 << 9   : External interrupt delegated to supervisor mode
+    # 1 << 1  : Software interrupt delegated to supervisor mode
+    # 1 << 5  : Timer interrupt delegated to supervisor mode
+    # 1 << 9  : External interrupt delegated to supervisor mode
     # By default all traps (interrupts or exceptions) automatically
     # cause an elevation to the machine privilege mode (mode 3).
     # When we delegate, we're telling the CPU to only elevate to
