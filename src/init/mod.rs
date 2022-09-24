@@ -9,6 +9,7 @@ use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
 use crate::mm::{self, create_kernel_identity_map, map_ram_region_identity};
 use crate::sc::{self, cpu};
+use crate::util::align;
 
 
 pub const COMMAND_LINE_SIZE: usize = 256;
@@ -20,7 +21,9 @@ pub static mut BOOT_COMMAND_LINE: [u8; COMMAND_LINE_SIZE] = [0u8; COMMAND_LINE_S
 extern "C" fn collect_memory_region_and_init(s_ptr: *mut u8, count: usize, user_data: *const ()) {
     let memory = user_data as *const Memory;
     let memory = unsafe { &*memory };
-    let pair = s_ptr as *mut (usize, usize);
+    // The stack pointer may not satisfy the alignment.
+    let pair = align::align_up_of::<(usize, usize)>(s_ptr as usize);
+    let pair = pair as *mut (usize, usize);
     let mut idx = 0usize;
     for region in memory.regions() {
         if let Some(size) = region.size {
@@ -96,7 +99,9 @@ pub fn early_setup(fdt: &Fdt) -> usize {
 
     // Init physical memory region
     unsafe {
-        let mem_size = (reg_count + 1) * size_of::<(usize, usize)>();
+        // We allocate space for two additional entries: one for the finish entry(not used currently);
+        // and another for the alignment to satisfy the request of rust borrow variable and ptr.read().
+        let mem_size = (reg_count + 2) * size_of::<(usize, usize)>();
         let user_data = &memory as *const _ as *const ();
         // SAFETY: The callback func matches the requirement:
         //   - Write at most `mem_size` bytes (guard by the assert).
