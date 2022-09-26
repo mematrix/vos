@@ -11,6 +11,7 @@
 //! | 0x20_0000_0000 | 128GiB | Map to user space. |
 //! | 0x40_0000_0000 | To u64::max | Not used. |
 
+pub(crate) mod early;
 pub(crate) mod page;
 pub(crate) mod mmu;
 pub(crate) mod kmem;
@@ -19,6 +20,23 @@ pub(crate) mod virt_qemu;
 use core::arch::asm;
 use mmu::{create_root_table, EntryBits, Mode, Table};
 use crate::util::align;
+
+
+/// Heap area base address. Init before calling `early_init` and can not change after the
+/// `early_init` call.
+static mut HEAP_BASE: usize = 0;
+
+/// Set the available heap base address.
+///
+/// **Note**: After calling the [`mm::early_init`] function, The heap base address must not
+/// be changed.
+pub fn set_heap_base_addr(heap_base: usize) {
+    unsafe {
+        debug_assert!(HEAP_BASE == 0usize);
+        HEAP_BASE = heap_base;
+    }
+}
+
 
 /// Init the physical memory management property.
 pub fn early_init(mem_regions: &[(usize, usize)]) {

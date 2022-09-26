@@ -89,6 +89,9 @@ extern "C" fn collect_memory_region_and_init(s_ptr: *mut u8, count: usize, user_
 /// Setup on the early boot time.
 /// Returns the SATP value (including the MODE).
 pub fn early_setup(fdt: &Fdt) -> usize {
+    // Set the heap base address.
+    mm::set_heap_base_addr(unsafe { crate::asm::mem_v::HEAP_START });
+
     let chosen = fdt.chosen();
     early_init::dt_scan_chosen(&chosen);
 
