@@ -12,9 +12,11 @@ use crate::mm::page::PAGE_SIZE;
 /// Represents the CPU info.
 #[repr(C)]
 pub struct CpuInfo {
-    /// CPU frequency. We will perform the context switching per 10ms (100 times per second),
-    /// so the context switch time is `freq / 100`.
-    freq: u64,
+    /// CPU frequency.
+    clock_freq: usize,
+    /// CPU timebase frequency. We will perform the context switching per ~16ms (64 times per second),
+    /// so the context switch time is `timebase_freq / 64`.
+    timebase_freq: usize,
     /// Cache the hart id, because the `mhartid` is a machine level CSR and we need the env-call
     /// to get the hart-id.
     hart_id: usize,
@@ -27,20 +29,29 @@ impl CpuInfo {
     // constructor call, so no ctor method is provided.
 
     #[inline(always)]
-    pub fn set_freq(&mut self, freq: u64) {
-        self.freq = freq;
+    pub fn set_clock_freq(&mut self, freq: usize) {
+        self.clock_freq = freq;
     }
 
     #[inline(always)]
-    pub fn get_freq(&self) -> u64 {
-        self.freq
+    pub fn get_clock_freq(&self) -> usize {
+        self.clock_freq
+    }
+
+    #[inline(always)]
+    pub fn set_timebase_freq(&mut self, freq: usize) {
+        self.timebase_freq = freq;
+    }
+
+    #[inline(always)]
+    pub fn get_timebase_freq(&self) -> usize {
+        self.timebase_freq
     }
 
     /// Get the interval time (in CPU clocks) performing the context switching.
     #[inline(always)]
-    pub fn get_ctx_switch_interval(&self) -> u64 {
-        // or freq/128 ?
-        self.freq / 100
+    pub fn get_ctx_switch_interval(&self) -> usize {
+        self.timebase_freq / 64usize
     }
 
     #[inline(always)]
@@ -113,7 +124,7 @@ pub fn get_cpu_count() -> usize {
     }
 }
 
-pub fn get_by_cpuid(cpuid: usize) -> &'static mut CpuInfo {
+pub fn get_info_by_cpuid(cpuid: usize) -> &'static mut CpuInfo {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 
@@ -129,4 +140,26 @@ pub fn get_frame_by_cpuid(cpuid: usize) -> *const TrapStackFrame {
         let cpu = CPU_STACKS.add(cpuid);
         &(*cpu).frame as _
     }
+}
+
+pub fn get_stack_by_cpuid(cpuid: usize) -> &'static TrapStack {
+    unsafe {
+        debug_assert!(cpuid < CPU_COUNT);
+
+        let cpu = CPU_STACKS.add(cpuid);
+        &*cpu
+    }
+}
+
+pub fn get_boot_cpu_stack() -> &'static mut TrapStack {
+    unsafe {
+        let count = CPU_COUNT;
+        for id in 0..count {
+            let cpu = CPU_STACKS.add(id);
+            if (*cpu).info.get_hart_id() == 0 {
+                return &mut *cpu;
+            }
+        }
+    }
+    panic!("Can not find the boot cpu (hart_id == 0) which is required.");
 }

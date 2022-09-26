@@ -123,8 +123,7 @@ struct COffsetAlignTest {
 /// Returns the SATP value (including the MODE).
 extern "C"
 fn m_init(hart_id: usize, dtb: *const u8) -> usize {
-    let uart = driver::uart::Uart::default();
-    uart.init_default();
+    init::boot_setup(dtb);
 
     match log::set_logger(&UART_LOGGER) {
         Ok(_) => { log::set_max_level(log::LevelFilter::Trace); }
