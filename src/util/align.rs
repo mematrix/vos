@@ -3,6 +3,12 @@
 use core::mem::align_of;
 
 
+/// Get the order of an alignment value. Which is the count of the trailing zero bits
+/// of the `alignment`.
+pub const fn get_order(alignment: usize) -> usize {
+    alignment.trailing_zeros() as usize
+}
+
 /// Returns the **aligned** value of `val`.
 ///
 /// An **aligned** value is guaranteed that the least bits (width is specified
