@@ -15,12 +15,12 @@ use super::HEAP_BASE;
 /// Allocate `count` object of `T`. This will alloc `count * size_of::<T>()` bytes memory.
 ///
 /// **Note**: The return address is default aligned with `T`.
-pub fn alloc_obj<T>(count: usize) -> usize {
+pub fn alloc_obj<T>(count: usize) -> *mut T {
     let heap_base = unsafe { HEAP_BASE };
     let base = align_up_of::<T>(heap_base);
     unsafe {
         HEAP_BASE = base + size_of::<T>() * count;
     }
 
-    base
+    base as _
 }
