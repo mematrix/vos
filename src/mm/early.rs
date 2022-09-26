@@ -24,3 +24,13 @@ pub fn alloc_obj<T>(count: usize) -> *mut T {
 
     base as _
 }
+
+/// Allocate `size` bytes memory. No extra alignment applied.
+pub fn alloc_bytes(size: usize) -> *mut u8 {
+    let base = unsafe { HEAP_BASE };
+    unsafe {
+        HEAP_BASE = base + size;
+    }
+
+    base as _
+}
