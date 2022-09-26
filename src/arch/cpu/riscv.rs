@@ -90,6 +90,39 @@ pub const fn freg(r: FRegister) -> usize {
     r as usize
 }
 
+////////////////////// Registers R/W //////////////////////
+
+/// Read the `tp` register value.
+#[macro_export]
+macro_rules! read_tp {
+    () => {{
+        let tp: usize;
+        ::core::arch::asm!("mv {}, tp", out(reg) tp);
+        tp
+    }};
+}
+
+/// Write value to `tp` register.
+#[macro_export]
+macro_rules! write_tp {
+    ($tp:expr) => {{
+        let val: usize = $tp;
+        ::core::arch::asm!("mv tp, {}", in(reg) val);
+    }};
+}
+
+// pub macro write_tp($tp:expr) {}
+
+//////////////////// Machine CSRs R/W /////////////////////
+
+pub fn mhartid_read() -> usize {
+    unsafe {
+        let id;
+        asm!("csrr {}, mhartid", out(reg) id);
+        id
+    }
+}
+
 ////////////////// Supervisor CSRs R/W ////////////////////
 
 /// Read `sstatus` register value.
