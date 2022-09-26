@@ -1,27 +1,55 @@
-//! Page-based memory management.
+//! Page-based physical memory allocation.
 //!
-//! This mod provides some functions to allocate/deallocate the **physical memory**
-//! from the HEAP area. The page size is default set to 4KiB.
+//! The principal algorithm used is the **Binary Buddy Allocator**, which is also used in the
+//! Linux OS and documented in [Chapter 6  Physical Page Allocation].
+//!
+//! The *physical memory* is managed with **page**, the page size is default set to 4KiB. Each
+//! **page** has an associated [`Page`] struct object, for more info, see [`Page`].
+//!
+//! All address or pointer value returned from the allocation API functions are the **physical
+//! address**. The returned type of the allocation API may be either `usize` (physical address,
+//! points to the allocated memory) or [`Page`] struct (meta info of the page). Use
+//! [`page_address`] to convert a [`Page`] to a **physical address**.
+//!
+//! ## Allocation API
+//!
+//! | Allocation API | Return | Description |
+//! | -------------- | ------ | ----------- |
+//! | get_free_page(flag) | `Page` | Allocate a single page and return a struct page |
+//! | get_free_pages(flag, order) | `Page` | Allocate 2^order number of pages and return a struct page |
+//! | alloc_page(flag) | `usize` | Allocate a single page and return the address |
+//! | alloc_pages(flag, order) | `usize` | Allocate 2^order number of pages and return the address |
+//! | alloc_zeroed_page(flag) | `usize` | Allocate a single page, zero it and return the address |
+//!
+//! ## Free API
+//!
+//! | Free API | Description |
+//! | -------- | ----------- |
+//! | return_page(page) | Free a single page |
+//! | return_pages(page, order) | Free an order number of pages from the given page |
+//! | free_page(addr) | Free a single page from the give address |
+//! | free_pages(addr, order) | Free an order number of pages from the given address |
+//!
+//! [Chapter 6  Physical Page Allocation]: https://www.kernel.org/doc/gorman/html/understand/understand009.html
+//! [`Page`]: self::Page
+//! [`page_address`]: self::page_address
 
 // todo: add page alloc fn for discontinuous pages: fn a(s: usize, c: fn(*mut()), u: *mut())
 
 use core::mem::size_of;
+use core::ptr::{addr_of, null_mut};
 
 use crate::asm::mem_v::{TEXT_START, HEAP_START, HEAP_SIZE};
-use crate::util::align::align_val_up;
+use crate::util::align::{align_up_of, align_val_down, align_val_up, get_order};
+use crate::util::list::List;
 
-
-// We will use ALLOC_START to mark the start of the actual
-// memory we can dish out.
-static mut ALLOC_START: usize = 0;
-// Track the max number than can be allocated.
-static mut ALLOC_PAGES: usize = 0;
 
 pub const PAGE_ORDER: usize = 12;
+/// Page size.
 pub const PAGE_SIZE: usize = 1 << 12;
 
-#[repr(u8)]
-enum PageBits {
+#[repr(u32)]
+enum PageFlag {
     Empty = 0,
     Taken = 1 << 0,
     Last = 1 << 1,
@@ -29,86 +57,202 @@ enum PageBits {
     LastTaken = 1 << 0 | 1 << 1,
 }
 
-impl PageBits {
+impl PageFlag {
     /// Get the underlying representation value.
     #[inline]
-    pub const fn val(self) -> u8 {
-        self as u8
+    pub const fn val(self) -> u32 {
+        self as u32
     }
 }
 
-/// Each page is described by the Page structure.
-struct Page {
-    flags: u8,
+/// Each **page** is described by the `Page` structure.
+///
+/// We guarantee that `size_of::<Page>() % 16 == 0` and the `Page` object will be allocated
+/// with the align of `size_of::<Page>()` or 16. So the least 4 bits of the pointer to a `Page`
+/// object will always guard to 0 and can be safety used, such as save the page alloc order.
+///
+/// If a **page** is allocated, then the `Page` structure associated with it will be free to
+/// use to store private data, except for the first 4 bytes which are used to store the page
+/// flags. [`get_private`] method can be used to retrieve the private area start address, and
+/// [`get_private_size`] method can be used to get the available size of private area, this is
+/// a **const** function so it can be called at the compile-time context to do some static
+/// assertions. The private size is guaranteed to at least 28 bytes.
+///
+/// The least 16 bits of the inner `flags` field are used by the Page allocator, while the most
+/// 16 bits can be used to store custom flags. See methods [`get_custom_flags`], [`set_custom_flags`]
+/// and [`replace_custom_flags`] for more info, note that though the param or return type is `u32`,
+/// only the least 16 bits is valid and used.
+///
+/// [`get_private`]: self::Page::get_private
+/// [`get_private_size`]: self::Page::get_private_size
+/// [`get_custom_flags`]: self::Page::get_custom_flags
+/// [`set_custom_flags`]: self::Page::set_custom_flags
+/// [`replace_custom_flags`]: self::Page::replace_custom_flags
+#[repr(C)]
+pub struct Page {
+    flags: u32,
+    reserve: u32,
+    padding: usize,
+    head: List,
 }
+
+// Assert the size of `Page` equals to multiple times of 32bytes.
+sa::const_assert_eq!(size_of::<Page>() % 32, 0);
 
 impl Page {
-    /// Check if this page has been marked as the final allocation.
+    /// Get the available size for private usage.
     #[inline]
-    pub fn is_last(&self) -> bool {
-        self.flags & PageBits::Last.val() != 0
+    pub const fn get_private_size() -> usize {
+        size_of::<Page>() - size_of::<u32>()
     }
 
-    /// Check if this page is marked as being taken (allocated).
+    /// Get a pointer of the private memory.
     #[inline]
-    pub fn is_taken(&self) -> bool {
-        self.flags & PageBits::Taken.val() != 0
+    pub fn get_private(&mut self) -> *mut u8 {
+        addr_of!(self.reserve) as *mut u8
     }
 
-    /// Check if this page is **not** marked as being taken (not allocated).
+    /// Get the custom flags.
     #[inline]
-    pub fn is_free(&self) -> bool {
-        !self.is_taken()
+    pub fn read_custom_flags(&self) -> u32 {
+        self.flags >> 16
     }
 
-    /// Clear the `Page` structure, marked as unused.
+    /// Replace the custom flags. This will overwrite the total custom flags value.
+    ///
+    /// **Note**: Only the least 16 bits of `flag` is used.
     #[inline]
-    pub fn clear(&mut self) {
-        self.flags = PageBits::Empty.val();
+    pub fn replace_custom_flags(&mut self, flag: u32) {
+        self.flags = (self.flags & 0xffffu32) | (flag << 16);
     }
 
-    /// Set a certain flag.
+    /// Set the certain custom flags. If a bit of `flag` is 1, **set** the correspond custom flag bit;
+    /// otherwise leave the correspond flag bit unchanged.
+    ///
+    /// **Note**: Only the least 16 bits of `flag` is used.
     #[inline]
-    pub fn set_flag(&mut self, flag: PageBits) {
-        self.flags |= flag.val();
+    pub fn set_custom_flags(&mut self, flag: u32) {
+        self.flags |= (flag << 16);
     }
 
-    /// Clear a certain flag.
+    /// Clear the certain custom flags. If a bit of `flag` is 1, then **clear** the correspond custom
+    /// flag bit; otherwise leave the correspond flag bit unchanged.
+    ///
+    /// **Note**: Only the least 16 bits of `flag` is used.
     #[inline]
-    pub fn clear_flag(&mut self, flag: PageBits) {
-        self.flags &= !(flag.val());
+    pub fn clear_custom_flags(&mut self, flag: u32) {
+        self.flags &= !(flag << 16);
     }
 }
+
+
+#[repr(C)]
+struct FreeArea {
+    free_list: List,
+    bitmap: *mut u8,
+}
+
+impl FreeArea {
+    pub const fn new() -> Self {
+        Self {
+            free_list: List::new(),
+            bitmap: null_mut(),
+        }
+    }
+}
+
+const MAX_FREE_AREA_ORDER: usize = 10;
+
+#[repr(C)]
+struct Zone {
+    free_areas: [FreeArea; MAX_FREE_AREA_ORDER],
+}
+
+impl Zone {
+    pub const fn new() -> Self {
+        Self {
+            free_areas: [FreeArea::new(); MAX_FREE_AREA_ORDER],
+        }
+    }
+
+    pub fn init(&mut self) {
+        for area in &mut self.free_areas {
+            let ptr: *mut List = &mut area.free_list;
+            area.free_list.next = ptr;
+            area.free_list.prev = ptr;
+        }
+    }
+}
+
+const MAX_ZONE_COUNT: usize = 1;
+/// Memory zone list.
+static mut MEMORY_ZONES: [Zone; MAX_ZONE_COUNT] = [Zone::new(); MAX_ZONE_COUNT];
+/// `Page` object array base address.
+static mut PAGE_OBJ_BASE: usize = 0;
+// We will use ALLOC_START to mark the start of the actual
+// memory we can dish out.
+static mut ALLOC_START: usize = 0;
+// Track the max number than can be allocated.
+static mut ALLOC_PAGES: usize = 0;
+
 
 /// Initialize the page-based allocation system.
 ///
 /// **Note**: This should be called once before any allocate/deallocate function
 /// is called, and ran in the M-mode.
 pub fn init(mem_regions: &[(usize, usize)]) {
-    unsafe {
-        let start = HEAP_START;
-        let size = HEAP_SIZE - (start - TEXT_START);
-        let num_pages = size / PAGE_SIZE;
-        let ptr = start as *mut Page;
-        // Determine where the actual useful memory starts. This will be after all
-        // Page structures. We also must align the ALLOC_START to a page-boundary
-        // (PAGE_SIZE = 4096).
-        let alloc_start = align_val_up(start + num_pages * size_of::<Page>(), PAGE_ORDER);
-        // Then we need compute the actual pages count that can be allocated,
-        // because the Page descriptors are also allocated on the HEAP start address
-        // and will take some pages of the memory.
-        let actual_pages = (size - (alloc_start - start)) / PAGE_SIZE;
-        // Clear all pages to make sure that they can be allocated.
-        // todo: memset with *mut u64 (sd instruction instead of sb)
-        for i in 0..actual_pages {
-            (*ptr.add(i)).clear();
-        }
-        // Bytes in actual_pages..num_pages are wasted, its value is about
-        // HEAP_SIZE / (PAGE_SIZE * PAGE_SIZE). Which means 1 byte is wasted
-        // for every roughly 16MiB of the memory.
+    assert!(!mem_regions.is_empty(), "Memory regions is empty!");
+    if mem_regions.len() > 1 {
+        warn!("Physical memory address is not continuous.");
+    }
 
+    unsafe {
+        let zone = &mut MEMORY_ZONES[0];
+        zone.init();
+
+        let &(mem_start, mem_size) = mem_regions.get_unchecked(0usize);
+        let mem_end = mem_start + mem_size;
+        const ALIGNMENT: usize = PAGE_SIZE << (MAX_FREE_AREA_ORDER - 1usize);
+        let mem_end = align_val_down(mem_end, get_order(ALIGNMENT));
+
+        let start = super::HEAP_BASE;
+        let alloc_min_addr = align_val_up(start, get_order(ALIGNMENT));
+        assert!(alloc_min_addr >= mem_start && alloc_min_addr < mem_end);
+        let max_alloc_pages = (mem_end - alloc_min_addr) / PAGE_SIZE;
+
+        // Init the free area bitmap.
+        // We alloc the bitmap with align of 8bytes.
+        let mut bitmap_start = align_val_up(start, get_order(size_of::<u64>()));
+        let mut bitmap_len = 0usize;
+        for i in 0..(MAX_FREE_AREA_ORDER - 1) {
+            bitmap_len += (max_alloc_pages >> (i + 1usize) + 7) / 8;
+        }
+        let page_start = align_val_up(bitmap_start + bitmap_len, get_order(32usize));
+        // Cast bitmap to u64 pointer and memset to zero.
+        let bitmap_ptr = bitmap_start as *mut u64;
+        bitmap_ptr.write_bytes(0, (page_start - bitmap_start) / size_of::<u64>());
+        // Init
+        for i in 0..(MAX_FREE_AREA_ORDER - 1) {
+            let free_area = zone.free_areas.get_unchecked_mut(i);
+            free_area.bitmap = bitmap_start as *mut u8;
+
+            bitmap_start += ((max_alloc_pages >> (i + 1usize)) + 7) / 8;
+        }
+
+        // Adjust the min alloc address
+        let max_alloc_large_pages = (mem_end - page_start) /
+            ((PAGE_SIZE + size_of::<Page>()) << (MAX_FREE_AREA_ORDER - 1usize));
+        let page_end = page_start + size_of::<Page>() * (max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize));
+        let alloc_start = align_val_up(page_end, get_order(ALIGNMENT));
+
+        // Init `Page` objects.
+        for i in 0..max_alloc_large_pages {
+            // All `Page`obj to free_area[MAX_ORDER - 1].free_list.
+        }
+
+        PAGE_OBJ_BASE = page_start;
         ALLOC_START = alloc_start;
-        ALLOC_PAGES = actual_pages;
+        ALLOC_PAGES = (max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize));
     }
 }
 
@@ -149,10 +293,10 @@ pub fn alloc(pages: usize) -> usize {
                 if found {
                     // Now we get the enough contiguous pages to form that we need.
                     for k in i..(i + pages - 1) {
-                        (*ptr.add(k)).set_flag(PageBits::Taken);
+                        (*ptr.add(k)).set_flag(PageFlag::Taken);
                     }
                     // Mark the last page is PageBits::Last.
-                    (*ptr.add(i + pages - 1)).set_flag(PageBits::LastTaken);
+                    (*ptr.add(i + pages - 1)).set_flag(PageFlag::LastTaken);
 
                     // The Page structures themselves aren't the useful memory.
                     // Instead, there is 1 page per 4096 bytes starting at ALLOC_START.
