@@ -133,11 +133,7 @@ fn m_init(hart_id: usize, dtb: *const u8) -> usize {
     println_k!("Hello Rust OS");
     println_k!("Running in hart#{}, dtb: {:p}", hart_id, dtb);
 
-    let fdt = unsafe { driver::of::fdt::parse_from_ptr(dtb) };
-    driver::of::fdt::show_fdt_standard_nodes(&fdt);
-    driver::of::fdt::dump_fdt(&fdt);
-
-    init::early_setup(&fdt)
+    init::early_setup()
 }
 
 #[no_mangle]

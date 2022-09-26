@@ -4,7 +4,6 @@ mod early_init;
 
 use core::mem::size_of;
 use core::ptr::{copy_nonoverlapping, null, slice_from_raw_parts};
-use fdt::Fdt;
 use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
 use crate::mm::{self, create_kernel_identity_map, map_ram_region_identity};
@@ -59,7 +58,8 @@ pub fn boot_setup(boot_dtb: *const u8) {
 
 /// Setup on the early kernel init time. Init the physical memory management subsystem.
 /// Returns the SATP value (including the MODE).
-pub fn early_setup(fdt: &Fdt) -> usize {
+pub fn early_setup() -> usize {
+    let fdt = unsafe { crate::driver::of::fdt::parse_from_ptr::<'static>(DEVICE_TREE_BLOB) };
     let chosen = fdt.chosen();
     early_init::dt_scan_chosen(&chosen);
 
