@@ -39,7 +39,7 @@ use crate::sc::cpu::TrapStackFrame;
 
 
 /// Alloc and init the **per-cpu** data.
-pub fn init(cpu_count: usize) {
+pub fn boot_init(cpu_count: usize) {
     cpu::init_per_cpu_data(cpu_count);
 }
 

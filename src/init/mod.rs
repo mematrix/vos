@@ -17,6 +17,13 @@ pub const COMMAND_LINE_SIZE: usize = 256;
 /// Untouched command line saved by arch-special code.
 pub static mut BOOT_COMMAND_LINE: [u8; COMMAND_LINE_SIZE] = [0u8; COMMAND_LINE_SIZE];
 
+pub fn boot_setup() {
+    // Set the heap base address.
+    mm::set_heap_base_addr(unsafe { crate::asm::mem_v::HEAP_START });
+
+    sc::boot_init(4);
+}
+
 /// Collect the memory regions from the DeviceTree and do early mm init.
 extern "C" fn collect_memory_region_and_init(s_ptr: *mut u8, count: usize, user_data: *const ()) {
     let memory = user_data as *const Memory;
@@ -89,9 +96,6 @@ extern "C" fn collect_memory_region_and_init(s_ptr: *mut u8, count: usize, user_
 /// Setup on the early boot time.
 /// Returns the SATP value (including the MODE).
 pub fn early_setup(fdt: &Fdt) -> usize {
-    // Set the heap base address.
-    mm::set_heap_base_addr(unsafe { crate::asm::mem_v::HEAP_START });
-
     let chosen = fdt.chosen();
     early_init::dt_scan_chosen(&chosen);
 
@@ -153,7 +157,7 @@ pub fn setup() {
     // todo: init slab
 
     // todo: read cpu count from DeviceTree.
-    sc::init(4);
+    // sc::init(4);
     let cpu = cpu::get_by_cpuid(0);
     cpu.set_hart_id(0);
     cpu.set_freq(10_000_000);   // QEMU frequency is 10MHz

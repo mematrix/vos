@@ -6,7 +6,7 @@
 use core::arch::asm;
 use core::mem::size_of;
 use core::ptr::null_mut;
-use crate::mm::{kmem::kzmalloc, page::PAGE_SIZE};
+use crate::mm::page::PAGE_SIZE;
 
 
 /// Represents the CPU info.
@@ -78,13 +78,16 @@ pub struct TrapStack {
 
 sa::const_assert_eq!(size_of::<TrapStack>(), PAGE_SIZE);
 
+
+/////////////////// CPU DATA /////////////////////////
+
 static mut CPU_STACKS: *mut TrapStack = null_mut();
 static mut CPU_COUNT: usize = 0;
 
 /// Alloc and init the TrapStack memory for **per-cpu**.
 pub fn init_per_cpu_data(cpu_count: usize) {
     unsafe {
-        let cpus = kzmalloc(PAGE_SIZE * cpu_count) as *mut TrapStack;
+        let cpus = crate::mm::early::alloc_obj::<TrapStack>(cpu_count);
         assert!(!cpus.is_null());
 
         // Read the gp register value.
