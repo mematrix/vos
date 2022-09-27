@@ -14,3 +14,17 @@ pub fn change_bit_array(bits: *mut u8, pos: usize) {
         ptr.write(change_bit_u8(ptr.read(), bits_pos));
     }
 }
+
+/// Flip the bit on `pos` index of the `bits` array, and return true if the **old value** is 1,
+/// otherwise return false.
+#[inline]
+pub fn test_and_change_bit_array(bits: *mut u8, pos: usize) -> bool {
+    let byte_pos = pos / 8usize;
+    let bits_pos = pos % 8usize;
+    unsafe {
+        let ptr = bits.add(byte_pos);
+        let old_val = ptr.read();
+        ptr.write(change_bit_u8(old_val, bits_pos));
+        (old_val & ((1usize << bits_pos) as u8)) != 0u8
+    }
+}
