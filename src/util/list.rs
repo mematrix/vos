@@ -89,7 +89,7 @@ pub fn insert_after(node: &mut List, entry: &mut List) {
 
 /// Test whether a list is empty.
 #[inline(always)]
-pub const fn is_empty(head: &List) -> bool {
+pub fn is_empty(head: &List) -> bool {
     (head as *const List) == head.next
 }
 
@@ -97,13 +97,13 @@ pub const fn is_empty(head: &List) -> bool {
 ///
 /// **Note**: This function will return `true` if `head` and `entry` are the same empty list.
 #[inline(always)]
-pub const fn is_last(head: &List, entry: &List) -> bool {
+pub fn is_last(head: &List, entry: &List) -> bool {
     (entry as *const List) == head.prev
 }
 
 /// Test whether a list has just one entry.
 #[inline(always)]
-pub const fn is_singular(head: &List) -> bool {
+pub fn is_singular(head: &List) -> bool {
     (head as *const List) != head.next && (head.next == head.prev)
 }
 
@@ -123,4 +123,17 @@ pub fn delete(entry: &mut List) {
 pub fn delete_and_init_empty(entry: &mut List) {
     delete(entry);
     entry.init_empty();
+}
+
+/// Count the list items.
+pub fn count(head: &List) -> usize {
+    let mut count = 0usize;
+    let ptr = head as *const List;
+    let mut cur = head;
+    while ptr != cur.next {
+        count += 1usize;
+        cur = unsafe { &*cur.next }
+    }
+
+    count
 }
