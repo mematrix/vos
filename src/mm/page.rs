@@ -41,7 +41,7 @@ use core::ptr::{addr_of, null_mut};
 
 use crate::asm::mem_v::{TEXT_START, HEAP_START, HEAP_SIZE};
 use crate::util::align::{align_up_of, align_val_down, align_val_up, get_order};
-use crate::util::list::List;
+use crate::util::list::{self, List};
 
 
 pub const PAGE_ORDER: usize = 12;
@@ -90,6 +90,8 @@ impl PageFlag {
 /// [`replace_custom_flags`]: self::Page::replace_custom_flags
 #[repr(C)]
 pub struct Page {
+    /// bits\[7:0] store the idx of zone that self page belongs. bits\[15:8] store inner flags.
+    /// bits\[31:16] store custom flags.
     flags: u32,
     reserve: u32,
     padding: usize,
@@ -143,6 +145,18 @@ impl Page {
     pub fn clear_custom_flags(&mut self, flag: u32) {
         self.flags &= !(flag << 16);
     }
+
+    /// Set zone idx.
+    #[inline]
+    fn set_zone_idx(&mut self, idx: usize) {
+        self.flags = (self.flags & !0xffu32) | (idx & 0xffusize) as u32;
+    }
+
+    /// Get zone idx.
+    #[inline]
+    fn get_zone_idx(&self) -> usize {
+        (self.flags & 0xffu32) as usize
+    }
 }
 
 
@@ -166,20 +180,20 @@ const MAX_FREE_AREA_ORDER: usize = 10;
 #[repr(C)]
 struct Zone {
     free_areas: [FreeArea; MAX_FREE_AREA_ORDER],
+    free_pages: usize,
 }
 
 impl Zone {
     pub const fn new() -> Self {
         Self {
             free_areas: [FreeArea::new(); MAX_FREE_AREA_ORDER],
+            free_pages: 0usize,
         }
     }
 
     pub fn init(&mut self) {
         for area in &mut self.free_areas {
-            let ptr: *mut List = &mut area.free_list;
-            area.free_list.next = ptr;
-            area.free_list.prev = ptr;
+            area.free_list.init_empty();
         }
     }
 }
@@ -242,17 +256,30 @@ pub fn init(mem_regions: &[(usize, usize)]) {
         // Adjust the min alloc address
         let max_alloc_large_pages = (mem_end - page_start) /
             ((PAGE_SIZE + size_of::<Page>()) << (MAX_FREE_AREA_ORDER - 1usize));
-        let page_end = page_start + size_of::<Page>() * (max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize));
+        let alloc_pages = (max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize));
+        let page_end = page_start + size_of::<Page>() * alloc_pages;
         let alloc_start = align_val_up(page_end, get_order(ALIGNMENT));
 
         // Init `Page` objects.
+        let free_area = zone.free_areas.get_unchecked_mut(MAX_FREE_AREA_ORDER - 1usize);
+        let list_head = &mut free_area.free_list;
+        let mut prev_node = list_head as *mut List;
+        let page_base = page_start as *mut Page;
+        const PAGE_COUNT_LAST_AREA: usize = 1usize << (MAX_FREE_AREA_ORDER - 1usize);
         for i in 0..max_alloc_large_pages {
             // All `Page`obj to free_area[MAX_ORDER - 1].free_list.
+            let page = page_base.add(i * PAGE_COUNT_LAST_AREA);
+            (*page).flags = 0;
+            let page_head = &mut (*page).head;
+            list::partial_append(&mut *prev_node, page_head);
+            prev_node = page_head as _;
         }
+        list::partial_append(&mut *prev_node, list_head);
 
         PAGE_OBJ_BASE = page_start;
         ALLOC_START = alloc_start;
-        ALLOC_PAGES = (max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize));
+        ALLOC_PAGES = alloc_pages;
+        zone.free_pages = alloc_pages;
     }
 }
 
@@ -269,47 +296,11 @@ pub fn init(mem_regions: &[(usize, usize)]) {
 /// is mapped to the same virtual address and physical address).
 pub fn alloc(pages: usize) -> usize {
     assert!(pages > 0);
-    unsafe {
-        let num_pages = ALLOC_PAGES;
-        let ptr = HEAP_START as *mut Page;
-        let mut i = 0usize;
-        while i < (num_pages - pages) {
-            // Check to see if this Page is free. If so, we have the first
-            // candidate memory address.
-            if (*ptr.add(i)).is_free() {
-                let mut found = true;
-                for j in (i + 1)..(i + pages) {
-                    // Now check to see if we have a contiguous allocation
-                    // for all of the request pages.
-                    if (*ptr.add(j)).is_taken() {
-                        found = false;
-                        // Move scan position to skip the range i..j because
-                        // we have checked the pages in this range.
-                        i = j;
-                        break;
-                    }
-                }
+    let order = pages.next_power_of_two().trailing_zeros() as usize; // for migration.
+    // if order >= MAX_
 
-                if found {
-                    // Now we get the enough contiguous pages to form that we need.
-                    for k in i..(i + pages - 1) {
-                        (*ptr.add(k)).set_flag(PageFlag::Taken);
-                    }
-                    // Mark the last page is PageBits::Last.
-                    (*ptr.add(i + pages - 1)).set_flag(PageFlag::LastTaken);
-
-                    // The Page structures themselves aren't the useful memory.
-                    // Instead, there is 1 page per 4096 bytes starting at ALLOC_START.
-                    return ALLOC_START + PAGE_SIZE * i;
-                }
-            }
-
-            // Move scan position to next.
-            i += 1;
-        }
-    }
-
-    0
+    let page = do_alloc_pages(0, order);
+    page_to_address(page)
 }
 
 /// Allocate and zero a page or multiple pages (contiguous allocation).
@@ -377,6 +368,101 @@ pub fn dealloc(ptr: usize) {
         (*p).clear();
     }
 }
+
+
+////////////////////// Inner Impl ///////////////////////////
+
+fn page_to_address(page: *const Page) -> usize {
+    unsafe {
+        // core::intrinsics::unlikely()
+        if page.is_null() {
+            return 0;
+        }
+
+        let index = page.offset_from(PAGE_OBJ_BASE as _) as usize;
+        ALLOC_START + index * PAGE_SIZE
+    }
+}
+
+fn address_to_page(addr: usize) -> *mut Page {
+    debug_assert!(addr.trailing_zeros() >= PAGE_ORDER as u32);
+    unsafe {
+        // core::intrinsics::unlikely()
+        if addr <= ALLOC_START {
+            return null_mut();
+        }
+
+        let index = (addr - ALLOC_START) / PAGE_SIZE;
+        (PAGE_OBJ_BASE as *mut Page).add(index)
+    }
+}
+
+fn do_alloc_pages(_flags: usize, order: usize) -> *mut Page {
+    // todo: flags support.
+    let size = 1usize << order;
+    for zone_idx in 0..MAX_ZONE_COUNT {
+        unsafe {
+            let zone = MEMORY_ZONES.get_unchecked_mut(zone_idx);
+            if size > zone.free_pages {
+                continue;
+            }
+
+            // Try alloc on zone
+            let page = alloc_page_on_zone(zone, order);
+            if !page.is_null() {
+                (*page).set_zone_idx(zone_idx);
+                return page;
+            }
+        }
+    }
+
+    null_mut()
+}
+
+#[inline(always)]
+fn bitmap_mark_used(bitmap: *mut u8, index: usize, order: usize) {
+    crate::util::bit::change_bit_array(bitmap, index >> (1usize + order));
+}
+
+unsafe fn alloc_page_on_zone(zone: &mut Zone, order: usize) -> *mut Page {
+    for current_order in order..MAX_FREE_AREA_ORDER {
+        let free_area = zone.free_areas.get_unchecked_mut(current_order);
+        if list::is_empty(&free_area.free_list) {
+            continue;
+        }
+
+        // list_entry
+        let page_head = free_area.free_list.next;
+        let page = crate::container_of_mut!(page_head, Page, head);
+        list::delete(&mut *page_head);
+        let index = page.offset_from(PAGE_OBJ_BASE as _) as usize;
+        if current_order != MAX_FREE_AREA_ORDER - 1usize {
+            bitmap_mark_used(free_area.bitmap, index, current_order);
+        }
+
+        zone.free_pages -= 1usize << order;
+        expand_areas(page, index, order, current_order, free_area as _);
+        return page;
+    }
+
+    null_mut()
+}
+
+unsafe fn expand_areas(page: *mut Page, index: usize, low: usize, mut high: usize, mut area: *mut FreeArea) {
+    let mut size = 1usize << high;
+    while low < high {
+        high -= 1usize;
+        area = area.sub(1);
+        size >>= 1usize;
+        let buddy = &mut (*page.add(size));
+        buddy.flags = 0;
+        list::head_append(&mut (*area).free_list, &mut buddy.head);
+        bitmap_mark_used((*area).bitmap, index + size, high);
+    }
+}
+
+
+////////////////////// Debug Helper /////////////////////////////
 
 /// Print all page allocations. Called from the M-mode or S-mode with identity
 /// PTE is set.
