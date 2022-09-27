@@ -30,6 +30,12 @@
 //! | free_page(addr) | Free a single page from the give address |
 //! | free_pages(addr, order) | Free an order number of pages from the given address |
 //!
+//! ## Calling Convention
+//! All functions in this mod **must be** called either on the M-mode or on the S-mode with an identity
+//! mapping table is set (`SATP`).
+//!
+//! > If running on S-mode, the identity mapping table must cover all physical memory address range.
+//!
 //! [Chapter 6  Physical Page Allocation]: https://www.kernel.org/doc/gorman/html/understand/understand009.html
 //! [`Page`]: self::Page
 //! [`page_address`]: self::page_address
@@ -39,8 +45,7 @@
 use core::mem::size_of;
 use core::ptr::{addr_of, null_mut};
 
-use crate::asm::mem_v::{TEXT_START, HEAP_START, HEAP_SIZE};
-use crate::util::align::{align_up_of, align_val_down, align_val_up, get_order};
+use crate::util::align::{align_val_down, align_val_up, get_order};
 use crate::util::list::{self, List};
 
 
@@ -134,7 +139,7 @@ impl Page {
     /// **Note**: Only the least 16 bits of `flag` is used.
     #[inline]
     pub fn set_custom_flags(&mut self, flag: u32) {
-        self.flags |= (flag << 16);
+        self.flags |= flag << 16;
     }
 
     /// Clear the certain custom flags. If a bit of `flag` is 1, then **clear** the correspond custom
@@ -181,13 +186,20 @@ const MAX_FREE_AREA_ORDER: usize = 10;
 struct Zone {
     free_areas: [FreeArea; MAX_FREE_AREA_ORDER],
     free_pages: usize,
+    max_pages: usize,
+    mem_start: usize,
+    mem_size: usize,
 }
 
 impl Zone {
     pub const fn new() -> Self {
+        const VAL: FreeArea = FreeArea::new();
         Self {
-            free_areas: [FreeArea::new(); MAX_FREE_AREA_ORDER],
-            free_pages: 0usize,
+            free_areas: [VAL; MAX_FREE_AREA_ORDER],
+            free_pages: 0,
+            max_pages: 0,
+            mem_start: 0,
+            mem_size: 0
         }
     }
 
@@ -210,10 +222,9 @@ static mut ALLOC_START: usize = 0;
 static mut ALLOC_PAGES: usize = 0;
 
 
-/// Initialize the page-based allocation system.
+/// Initialize the buddy allocator system.
 ///
-/// **Note**: This should be called once before any allocate/deallocate function
-/// is called, and ran in the M-mode.
+/// **Note**: After this call, the heap base address **must not** be changed.
 pub fn init(mem_regions: &[(usize, usize)]) {
     assert!(!mem_regions.is_empty(), "Memory regions is empty!");
     if mem_regions.len() > 1 {
@@ -225,6 +236,9 @@ pub fn init(mem_regions: &[(usize, usize)]) {
         zone.init();
 
         let &(mem_start, mem_size) = mem_regions.get_unchecked(0usize);
+        zone.mem_start = mem_start;
+        zone.mem_size = mem_size;
+
         let mem_end = mem_start + mem_size;
         const ALIGNMENT: usize = PAGE_SIZE << (MAX_FREE_AREA_ORDER - 1usize);
         let mem_end = align_val_down(mem_end, get_order(ALIGNMENT));
@@ -256,7 +270,7 @@ pub fn init(mem_regions: &[(usize, usize)]) {
         // Adjust the min alloc address
         let max_alloc_large_pages = (mem_end - page_start) /
             ((PAGE_SIZE + size_of::<Page>()) << (MAX_FREE_AREA_ORDER - 1usize));
-        let alloc_pages = (max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize));
+        let alloc_pages = max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize);
         let page_end = page_start + size_of::<Page>() * alloc_pages;
         let alloc_start = align_val_up(page_end, get_order(ALIGNMENT));
 
@@ -280,20 +294,18 @@ pub fn init(mem_regions: &[(usize, usize)]) {
         ALLOC_START = alloc_start;
         ALLOC_PAGES = alloc_pages;
         zone.free_pages = alloc_pages;
+        zone.max_pages = alloc_pages;
     }
 }
 
-/// Allocate a page or multiple pages (contiguous allocation).
-/// `pages` is the number of Page to allocate.
+/// Allocate `2^order` number of pages (contiguous allocation).
 ///
 /// **Note**: This function returns the **physical memory address** which is
 /// aligned to the *page size* (4KiB).
 ///
-/// **Call Convention**: Because this function needs to access the physical
-/// memory directly, so it **must** be called from the M-mode (in which the
-/// virtual address equals to the physical address) or in the S-mode with an
-/// identity PTE (in which at least the address \[`HEAP_START` : `ALLOC_START`]
-/// is mapped to the same virtual address and physical address).
+/// **Call Convention**: See [the mod document].
+///
+/// [the mod document]: self
 pub fn alloc(pages: usize) -> usize {
     assert!(pages > 0);
     let order = pages.next_power_of_two().trailing_zeros() as usize; // for migration.
@@ -303,25 +315,21 @@ pub fn alloc(pages: usize) -> usize {
     page_to_address(page)
 }
 
-/// Allocate and zero a page or multiple pages (contiguous allocation).
-/// `pages` is the number of Page to allocate.
+/// Allocate and zero a page.
 ///
 /// **Note**: This function returns the **physical memory address** which is
 /// aligned to the *page size* (4KiB). The returned pages' memory has been
 /// initialized with zero.
 ///
-/// **Call Convention**: Similar to the [`alloc`] function, but if it is called
-/// from the S-mode, not only the address \[`HEAP_START` : `ALLOC_START`], but
-/// also the address \[`$ret` : `$ret+pages*4096`] **must** have been mapped in
-/// the identity PTE (in which the virtual address equals to the physical
-/// address).
+/// **Call Convention**: See [the mod document].
 ///
-/// [`alloc`]: mem::page::alloc
+/// [the mod document]: self
 pub fn zalloc(pages: usize) -> usize {
     let ret = alloc(pages);
     if ret != 0 {
         let size = (pages * PAGE_SIZE) / 8;
         let big_ptr = ret as *mut u64;
+        // big_ptr.write_bytes(0, size);
         for i in 0..size {
             // We use big_ptr so that we can force a sd (store doubleword)
             // instruction rather than the sb. This means 8x fewer than before.
@@ -337,36 +345,17 @@ pub fn zalloc(pages: usize) -> usize {
 
 /// Deallocate a page by its **physical address**.
 ///
-/// **Call Convention**: Similar to the [`alloc`] function.
+/// **Call Convention**: See [the mod document].
 ///
-/// [`alloc`]: mem::page::alloc
+/// [the mod document]: self
 pub fn dealloc(ptr: usize) {
-    // The way we structure this, it will automatically coalesce contiguous pages.
     debug_assert!(ptr != 0);
     if ptr == 0 {
         return;
     }
 
-    unsafe {
-        let page_id = (ptr - ALLOC_START) / PAGE_SIZE;
-        // Make sure that the page id (index) makes sense.
-        assert!(page_id < ALLOC_PAGES);
-
-        let mut p = HEAP_START as *mut Page;
-        p = p.add(page_id);
-        while (*p).is_taken() && !(*p).is_last() {
-            (*p).clear();
-            p = p.add(1);
-        }
-
-        // If the following assertion fails, it is most likely caused by a
-        // double-free.
-        assert!((*p).is_last(), "Possible double-free detected! (Not taken found before last)");
-
-        // If we get here, we've taken care of all previous pages and we are
-        // on the last page.
-        (*p).clear();
-    }
+    let page = address_to_page(ptr);
+    do_free_pages(page, 0);
 }
 
 
@@ -461,52 +450,90 @@ unsafe fn expand_areas(page: *mut Page, index: usize, low: usize, mut high: usiz
     }
 }
 
+fn do_free_pages(page: *mut Page, order: usize) {
+    assert!(order < MAX_FREE_AREA_ORDER && !page.is_null());
+    unsafe {
+        let zone_idx = (*page).get_zone_idx();
+        debug_assert!(zone_idx < MAX_ZONE_COUNT);
+
+        let zone = MEMORY_ZONES.get_unchecked_mut(zone_idx);
+        let area = zone.free_areas.get_unchecked_mut(order) as *mut FreeArea;
+        free_pages_bulk(zone, page, area, order);
+    }
+}
+
+unsafe fn free_pages_bulk(zone: &mut Zone, page: *mut Page, mut area: *mut FreeArea, order: usize) {
+    let mut mask = !0usize << order;
+    let base = PAGE_OBJ_BASE as *mut Page;
+    let mut page_idx = page.offset_from(base) as usize;
+    if (page_idx & !mask != 0) || (page_idx + 1usize << order > zone.max_pages) {
+        panic!("Free page invalid.");
+    }
+
+    let mut index = page_idx >> (1usize + order);
+
+    zone.free_pages += 1usize << order;
+    for _ in order..(MAX_FREE_AREA_ORDER - 1usize) {
+        if !crate::util::bit::test_and_change_bit_array((*area).bitmap, index) {
+            break;
+        }
+
+        // Previous bit in bitmap is 1, so the buddy block is free, then do merge.
+        let buddy = base.add(page_idx ^ (1usize << order));
+        list::delete(&mut (*buddy).head);
+
+        mask <<= 1usize;
+        area = area.add(1);
+        index >>= 1usize;
+        page_idx &= mask;
+    }
+    list::head_append(&mut (*area).free_list, &mut (*base.add(page_idx)).head);
+}
+
 
 ////////////////////// Debug Helper /////////////////////////////
 
-/// Print all page allocations. Called from the M-mode or S-mode with identity
-/// PTE is set.
+/// Print all page allocations. Called from the M-mode or S-mode with identity PTE is set.
 /// This is mainly used for debugging.
 pub fn print_page_allocations() {
     unsafe {
-        let num_pages = ALLOC_PAGES;
-        let heap_beg = HEAP_START;
-        let heap_end = heap_beg + HEAP_SIZE;
-        let mut beg = HEAP_START as *const Page;
+        let zone = MEMORY_ZONES.get_unchecked(0);
+        let num_pages = zone.max_pages;
+
+        let heap_beg = super::HEAP_BASE;
+        let heap_end = zone.mem_start + zone.mem_size;
+
+        let beg = PAGE_OBJ_BASE as *const Page;
         let end = beg.add(num_pages);
         let alloc_beg = ALLOC_START;
         let alloc_end = ALLOC_START + num_pages * PAGE_SIZE;
+
         println_k!();
         println_k!(
             "PAGE ALLOCATION TABLE\nMETA: {:p} -> {:p}\nHEAP: 0x{:x} -> 0x{:x}\nPHYS: \
-            0x{:x} -> 0x{:x}",
-            beg, end, heap_beg, heap_end, alloc_beg, alloc_end
+            0x{:x} -> 0x{:x}\nMEMORY BEGIN: {:#x}, SIZE: {:#x}",
+            beg, end, heap_beg, heap_end, alloc_beg, alloc_end, zone.mem_start, zone.mem_size
         );
         println_k!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
         let mut num = 0;
-        while beg < end {
-            if (*beg).is_taken() {
-                let start = beg as usize;
-                let memaddr = alloc_beg + (start - heap_beg) / size_of::<Page>() * PAGE_SIZE;
-                print_k!("0x{:x} => ", memaddr);
-                loop {
-                    num += 1;
-                    if (*beg).is_last() {
-                        let end = beg as usize;
-                        let memaddr = alloc_beg + (end - heap_beg) / size_of::<Page>() * PAGE_SIZE + PAGE_SIZE - 1;
-                        print_k!("0x{:x}: {:>3} page(s)", memaddr, ((end - start) / size_of::<Page>() + 1));
-                        println_k!(".");
-                        break;
-                    }
-                    beg = beg.add(1);
-                }
+        let mut order = 0usize;
+        for free_area in &zone.free_areas {
+            print_k!("FreeArea[{}]: ", order);
+
+            let count = list::count(&free_area.free_list);
+            if count == 0 {
+                println_k!("<Empty>");
+            } else {
+                println_k!("{} item(s): {} << {} = {} page(s).", count, count, order, count << order);
             }
-            beg = beg.add(1);
+
+            num += count << order;
+            order += 1usize;
         }
 
         println_k!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        println_k!("Allocated: {:>5} pages ({:>9} bytes).", num, num * PAGE_SIZE);
-        println_k!("Free     : {:>5} pages ({:>9} bytes).", num_pages - num, (num_pages - num) * PAGE_SIZE);
+        println_k!("Allocated: {:>5} pages ({:>9} bytes).", num_pages - num, (num_pages - num) * PAGE_SIZE);
+        println_k!("Free     : {:>5} pages ({:>9} bytes).", num, num * PAGE_SIZE);
         println_k!();
     }
 }
