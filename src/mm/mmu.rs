@@ -22,7 +22,7 @@ use crate::mm::page::{PAGE_ORDER, PAGE_SIZE};
 
 
 /// Delegate allocator API for the `mmu` mod.
-mod alloc {
+mod allocator {
     use crate::mm::early::alloc_bytes_aligned;
     use crate::mm::page::{alloc, dealloc, PAGE_ORDER, PAGE_SIZE};
 
@@ -77,7 +77,7 @@ mod alloc {
     }
 }
 
-pub use alloc::enable_page_allocator;
+pub use self::allocator::enable_page_allocator;
 
 
 #[repr(u32)]
@@ -305,7 +305,7 @@ pub trait Table {
 }
 
 fn cast_to_table<T: Table + 'static>() -> *mut dyn Table {
-    let page = alloc::zero_alloc_page();
+    let page = allocator::zero_alloc_page();
     if page == 0 {
         null_mut::<T>() as *mut dyn Table
     } else {
@@ -342,7 +342,7 @@ pub fn create_root_table(mode: Mode) -> *mut dyn Table {
 /// **Call Convention**: This function **must** be called from the M-mode or in the
 /// S-mode with suitable identity PTEs are set.
 pub fn copy_root_table(root: &dyn Table) -> *mut dyn Table {
-    let pt_addr = alloc::alloc_page();
+    let pt_addr = allocator::alloc_page();
     let addr = root.get_addr();
     // Page table for each modes has the same size that equals to `PAGE_SIZE`,
     // just copy with ignoring the underlying format.
@@ -428,7 +428,7 @@ fn do_map<const LEVELS: usize, const PTE_SIZE: usize, const AUTO_VALID: bool>(
     for i in (level as usize..LEVELS - 1).rev() {
         if v.is_invalid() {
             // Alloc a page.
-            let page = alloc::zero_alloc_page();
+            let page = allocator::zero_alloc_page();
             // A page is already aligned by 4096 bytes, so store it in the
             // entry by right shift 2 bits (12 -> 10).
             v.set_entry((page as u64 >> 2) | EntryBits::Valid.val_u64());
@@ -552,7 +552,7 @@ fn walk_and_free_unused(addr: usize, level: u32, max_level: u32) -> (bool, bool)
                 update |= b_u;
             } else {
                 // All entries of sub level table have unmapped.
-                alloc::free_page(e);
+                allocator::free_page(e);
                 v.set_entry(0);
                 update = true;
                 // `valid |= 0x0u64` has no effect.
@@ -584,7 +584,7 @@ fn do_free_unused_entry<const LEVELS: usize>(root: usize) -> bool {
                 update |= u;
             } else {
                 // All entries of sub level table have been unmapped.
-                alloc::free_page(addr);
+                allocator::free_page(addr);
                 v.set_entry(0);
                 update = true;
             }
@@ -610,7 +610,7 @@ fn do_destroy(addr: usize, level: u32, max_level: u32) {
         }
     }
 
-    alloc::free_page(addr);
+    allocator::free_page(addr);
 }
 
 const ENTRIES_LEN: usize = 512;
