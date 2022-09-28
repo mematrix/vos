@@ -51,7 +51,7 @@ mod allocator {
         unsafe { DEALLOC_FN(addr); }
     }
 
-    pub fn zero_alloc_page() -> usize {
+    pub fn alloc_zeroed_page() -> usize {
         let addr = alloc_page();
         if addr != 0 {
             // We got a block of 4094 bytes (page size).
@@ -305,7 +305,7 @@ pub trait Table {
 }
 
 fn cast_to_table<T: Table + 'static>() -> *mut dyn Table {
-    let page = allocator::zero_alloc_page();
+    let page = allocator::alloc_zeroed_page();
     if page == 0 {
         null_mut::<T>() as *mut dyn Table
     } else {
@@ -396,8 +396,10 @@ const L_MASK: usize = 0x1ff;
 const PTE_FLAG_MASK: u64 = 0x3ff;
 const PTE_PPN_MASK: u64 = !0x3ff;
 
+const PTE_SIZE: usize = 8;
+
 /// Common map function for Sv39, Sv48, Sv57 mode.
-fn do_map<const LEVELS: usize, const PTE_SIZE: usize, const AUTO_VALID: bool>(
+fn do_map<const LEVELS: usize>(
     root: usize,
     v_addr: usize, p_addr: usize,
     bits: u32, level: u32) {
@@ -428,7 +430,7 @@ fn do_map<const LEVELS: usize, const PTE_SIZE: usize, const AUTO_VALID: bool>(
     for i in (level as usize..LEVELS - 1).rev() {
         if v.is_invalid() {
             // Alloc a page.
-            let page = allocator::zero_alloc_page();
+            let page = allocator::alloc_zeroed_page();
             // A page is already aligned by 4096 bytes, so store it in the
             // entry by right shift 2 bits (12 -> 10).
             v.set_entry((page as u64 >> 2) | EntryBits::Valid.val_u64());
@@ -443,8 +445,7 @@ fn do_map<const LEVELS: usize, const PTE_SIZE: usize, const AUTO_VALID: bool>(
     }
 
     // Shift each ppn and combine
-    let mut entry = (bits as u64 & PTE_FLAG_MASK)
-        | (AUTO_VALID as u64 & EntryBits::Valid.val_u64());
+    let mut entry = (bits as u64 & PTE_FLAG_MASK) | EntryBits::Valid.val_u64();
     for (i, p) in ppn.iter().enumerate() {
         entry |= (p << (i * 9 + 10)) as u64;
     }
@@ -634,7 +635,7 @@ impl Table for Sv39Table {
     }
 
     fn map(&mut self, v_addr: usize, p_addr: usize, bits: u32, level: u32) {
-        do_map::<{ Sv39Table::LEVELS }, 8, true>(self.get_addr(), v_addr, p_addr, bits, level);
+        do_map::<{ Sv39Table::LEVELS }>(self.get_addr(), v_addr, p_addr, bits, level);
     }
 
     fn unmap(&mut self, v_addr: usize) -> bool {
@@ -673,7 +674,7 @@ impl Table for Sv48Table {
     }
 
     fn map(&mut self, v_addr: usize, p_addr: usize, bits: u32, level: u32) {
-        do_map::<{ Sv48Table::LEVELS }, 8, true>(self.get_addr(), v_addr, p_addr, bits, level);
+        do_map::<{ Sv48Table::LEVELS }>(self.get_addr(), v_addr, p_addr, bits, level);
     }
 
     fn unmap(&mut self, v_addr: usize) -> bool {
@@ -712,7 +713,7 @@ impl Table for Sv57Table {
     }
 
     fn map(&mut self, v_addr: usize, p_addr: usize, bits: u32, level: u32) {
-        do_map::<{ Sv57Table::LEVELS }, 8, true>(self.get_addr(), v_addr, p_addr, bits, level);
+        do_map::<{ Sv57Table::LEVELS }>(self.get_addr(), v_addr, p_addr, bits, level);
     }
 
     fn unmap(&mut self, v_addr: usize) -> bool {
