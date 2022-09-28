@@ -8,7 +8,7 @@
 //! [`mm::set_heap_base_addr`]: crate::mm::set_heap_base_addr
 
 use core::mem::size_of;
-use crate::util::align::align_up_of;
+use crate::util::align::{align_up, align_up_of};
 use super::HEAP_BASE;
 
 
@@ -28,6 +28,21 @@ pub fn alloc_obj<T>(count: usize) -> *mut T {
 /// Allocate `size` bytes memory. No extra alignment applied.
 pub fn alloc_bytes(size: usize) -> *mut u8 {
     let base = unsafe { HEAP_BASE };
+    unsafe {
+        HEAP_BASE = base + size;
+    }
+
+    base as _
+}
+
+/// Allocate `size` bytes memory, aligned with order of `align_order`.
+///
+/// About align order, see [`align::get_order`].
+///
+/// [`align::get_order`]: crate::util::align::get_order
+pub fn alloc_bytes_aligned(size: usize, align_order: usize) -> *mut u8 {
+    let base = unsafe { HEAP_BASE };
+    let base = align_up(base, align_order);
     unsafe {
         HEAP_BASE = base + size;
     }
