@@ -40,11 +40,8 @@
 //! [`Page`]: self::Page
 //! [`page_address`]: self::page_address
 
-// todo: add page alloc fn for discontinuous pages: fn a(s: usize, c: fn(*mut()), u: *mut())
-
 use core::mem::size_of;
 use core::ptr::{addr_of, null_mut};
-
 use crate::util::align::{align_down, align_up, get_order};
 use crate::util::list::{self, List};
 
@@ -53,22 +50,6 @@ pub const PAGE_ORDER: usize = 12;
 /// Page size.
 pub const PAGE_SIZE: usize = 1 << 12;
 
-#[repr(u32)]
-enum PageFlag {
-    Empty = 0,
-    Taken = 1 << 0,
-    Last = 1 << 1,
-
-    LastTaken = 1 << 0 | 1 << 1,
-}
-
-impl PageFlag {
-    /// Get the underlying representation value.
-    #[inline]
-    pub const fn val(self) -> u32 {
-        self as u32
-    }
-}
 
 /// Each **page** is described by the `Page` structure.
 ///
@@ -199,7 +180,7 @@ impl Zone {
             free_pages: 0,
             max_pages: 0,
             mem_start: 0,
-            mem_size: 0
+            mem_size: 0,
         }
     }
 
@@ -298,6 +279,29 @@ pub fn init(mem_regions: &[(usize, usize)]) {
     }
 }
 
+/// Allocate a single page and return a struct page.
+pub fn get_free_page(flags: usize) -> *mut Page {
+    do_alloc_pages(flags, 0)
+}
+
+/// Allocate `2^order` number of pages and return a struct page.
+pub fn get_free_pages(flags: usize, order: usize) -> *mut Page {
+    do_alloc_pages(flags, order)
+}
+
+/// Allocate single page.
+///
+/// **Note**: This function returns the **physical memory address** which is
+/// aligned to the *page size* (4KiB).
+///
+/// **Call Convention**: See [the mod document].
+///
+/// [the mod document]: self
+pub fn alloc_page(flags: usize) -> usize {
+    let page = do_alloc_pages(flags, 0);
+    page_to_address(page)
+}
+
 /// Allocate `2^order` number of pages (contiguous allocation).
 ///
 /// **Note**: This function returns the **physical memory address** which is
@@ -306,12 +310,8 @@ pub fn init(mem_regions: &[(usize, usize)]) {
 /// **Call Convention**: See [the mod document].
 ///
 /// [the mod document]: self
-pub fn alloc(pages: usize) -> usize {
-    assert!(pages > 0);
-    let order = pages.next_power_of_two().trailing_zeros() as usize; // for migration.
-    // if order >= MAX_
-
-    let page = do_alloc_pages(0, order);
+pub fn alloc_pages(flags: usize, order: usize) -> usize {
+    let page = do_alloc_pages(flags, order);
     page_to_address(page)
 }
 
@@ -324,10 +324,10 @@ pub fn alloc(pages: usize) -> usize {
 /// **Call Convention**: See [the mod document].
 ///
 /// [the mod document]: self
-pub fn zalloc(pages: usize) -> usize {
-    let ret = alloc(pages);
+pub fn alloc_zeroed_page(flags: usize) -> usize {
+    let ret = alloc_page(flags);
     if ret != 0 {
-        let size = (pages * PAGE_SIZE) / 8;
+        let size = PAGE_SIZE / 8;
         let big_ptr = ret as *mut u64;
         // big_ptr.write_bytes(0, size);
         for i in 0..size {
@@ -343,19 +343,49 @@ pub fn zalloc(pages: usize) -> usize {
     ret
 }
 
-/// Deallocate a page by its **physical address**.
+/// Free a single page.
+pub fn return_page(page: *mut Page) {
+    do_free_pages(page, 0);
+}
+
+/// Free an `order` number of pages from the given page.
+pub fn return_pages(page: *mut Page, order: usize) {
+    do_free_pages(page, order);
+}
+
+/// Free a page by its **physical address**.
 ///
 /// **Call Convention**: See [the mod document].
 ///
 /// [the mod document]: self
-pub fn dealloc(ptr: usize) {
-    debug_assert!(ptr != 0);
-    if ptr == 0 {
+pub fn free_page(addr: usize) {
+    if addr == 0 {
+        debug_assert!(false);
         return;
     }
 
-    let page = address_to_page(ptr);
+    let page = address_to_page(addr);
     do_free_pages(page, 0);
+}
+
+/// Free an `order` pages from the given **physical address**.
+///
+/// **Call Convention**: See [the mod document].
+///
+/// [the mod document]: self
+pub fn free_pages(addr: usize, order: usize) {
+    if addr == 0 {
+        debug_assert!(false);
+        return;
+    }
+
+    let page = address_to_page(addr);
+    do_free_pages(page, order);
+}
+
+/// Get the **physical address** of a `page` struct.
+pub fn page_address(page: *const Page) -> usize {
+    page_to_address(page)
 }
 
 

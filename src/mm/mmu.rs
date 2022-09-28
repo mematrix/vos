@@ -24,7 +24,7 @@ use crate::mm::page::{PAGE_ORDER, PAGE_SIZE};
 /// Delegate allocator API for the `mmu` mod.
 mod allocator {
     use crate::mm::early::alloc_bytes_aligned;
-    use crate::mm::page::{alloc, dealloc, PAGE_ORDER, PAGE_SIZE};
+    use crate::mm::page::{self, PAGE_ORDER, PAGE_SIZE};
 
     fn early_alloc_page() -> usize {
         alloc_bytes_aligned(PAGE_SIZE, PAGE_ORDER) as usize
@@ -33,11 +33,11 @@ mod allocator {
     fn early_dealloc_page(_addr: usize) {}
 
     fn kernel_alloc_page() -> usize {
-        alloc(1)
+        page::alloc_page(0)
     }
 
     fn kernel_dealloc_page(addr: usize) {
-        dealloc(addr);
+        page::free_page(addr);
     }
 
     static mut ALLOC_FN: fn() -> usize = early_alloc_page;

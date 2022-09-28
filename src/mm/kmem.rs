@@ -1,7 +1,8 @@
 //! Kernel memory management for sub-page level: malloc-like allocation system.
 
+use core::alloc::{GlobalAlloc, Layout};
 use core::{mem::size_of, ptr::null_mut};
-use crate::mm::{page::{PAGE_SIZE, zalloc}};
+use crate::mm::page::{PAGE_SIZE, alloc_pages};
 use crate::util::align::align_up;
 
 
@@ -73,7 +74,7 @@ pub fn init() {
     unsafe {
         // Allocate 512 kernel pages (512 * 4KiB = 2MiB)
         const ALLOC_COUNT: usize = 512;
-        let k_alloc = zalloc(ALLOC_COUNT);
+        let k_alloc = alloc_pages(0,ALLOC_COUNT.trailing_zeros() as usize);
         debug_assert!(k_alloc != 0);
         let k_alloc = k_alloc as *mut AllocList;
         (*k_alloc).set_free();
@@ -205,7 +206,6 @@ pub fn print_table() {
 
 // The global allocator allows us to use the data structures in the core library, such
 // as a linked list or B-tree.
-use core::alloc::{GlobalAlloc, Layout};
 
 // The global allocator is a static constant to a global allocator
 // structure. We don't need any members because we're using this
