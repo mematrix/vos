@@ -19,6 +19,7 @@ pub(crate) mod virt_qemu;
 
 use core::arch::asm;
 use mmu::{create_root_table, EntryBits, Mode, Table};
+use crate::constant::{ORDER_1GB, ORDER_2MB};
 use crate::util::align;
 
 
@@ -74,9 +75,6 @@ extern "C" {
 }
 
 
-// 2M = 0x20_0000 = 1 << 21
-const ORDER_2MB: usize = 21;
-const ORDER_1GB: usize = 30;
 const ENTRY_LEVEL_2MB: u32 = 1;
 const ENTRY_LEVEL_1GB: u32 = 2;
 

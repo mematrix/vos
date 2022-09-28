@@ -13,6 +13,7 @@ mod asm;
 #[macro_use]
 mod macros;
 mod util;
+mod constant;
 
 mod arch;
 mod init;
