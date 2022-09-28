@@ -40,11 +40,13 @@ pub fn set_heap_base_addr(heap_base: usize) {
 
 /// Init the physical memory management property.
 pub fn early_init(mem_regions: &[(usize, usize)]) {
-    // First init the physical pages
+    // First init the physical memory allocation system.
     page::init(mem_regions);
+    // MMU API enable the page-based allocator feature.
+    mmu::enable_page_allocator();
 
     // todo: move to kernel init phase.
-    // Init bytes-based allocator for the kernel memory management.
+    // Init SLAB allocator for the kernel memory management.
     kmem::init();
 }
 
