@@ -15,6 +15,20 @@ _start:
 
     # SATP should be zero. let's make sure.
     csrw satp, zero
+
+    # Set the PMP config. Simplely allow all address.
+    li t0, (0b01 << 3) | 0b111
+    csrw pmpcfg0, t0
+    li t1, 0x100000000
+    csrw pmpaddr0, t1
+
+    # Enable STCE. stimecmp
+    li t2, (0b01 << 63)
+    csrrs x0, menvcfg, t2
+    # Enable all counter register in S-mode.
+    li t3, -1
+    csrw mcounteren, t3
+
     # Any hardware threads (hart) that are not bootstrapping need to wait for an IPI
     csrr t0, mhartid
     bnez t0, 5f
@@ -57,12 +71,6 @@ _start:
     # Machine interrupt enable register.
     li t0, (1 << 3) | (1 << 7) | (1 << 11)
     csrw mie, t0
-
-    # Set the PMP config. Simplely allow all address.
-    li t0, (0b01 << 3) | 0b111
-    csrw pmpcfg0, t0
-    li t0, 0x100000000
-    csrw pmpaddr0, t0
 
     # Now set the S-mode CSRs.
 
