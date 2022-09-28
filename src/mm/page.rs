@@ -45,7 +45,7 @@
 use core::mem::size_of;
 use core::ptr::{addr_of, null_mut};
 
-use crate::util::align::{align_val_down, align_val_up, get_order};
+use crate::util::align::{align_down, align_up, get_order};
 use crate::util::list::{self, List};
 
 
@@ -241,21 +241,21 @@ pub fn init(mem_regions: &[(usize, usize)]) {
 
         let mem_end = mem_start + mem_size;
         const ALIGNMENT: usize = PAGE_SIZE << (MAX_FREE_AREA_ORDER - 1usize);
-        let mem_end = align_val_down(mem_end, get_order(ALIGNMENT));
+        let mem_end = align_down(mem_end, get_order(ALIGNMENT));
 
         let start = super::HEAP_BASE;
-        let alloc_min_addr = align_val_up(start, get_order(ALIGNMENT));
+        let alloc_min_addr = align_up(start, get_order(ALIGNMENT));
         assert!(alloc_min_addr >= mem_start && alloc_min_addr < mem_end);
         let max_alloc_pages = (mem_end - alloc_min_addr) / PAGE_SIZE;
 
         // Init the free area bitmap.
         // We alloc the bitmap with align of 8bytes.
-        let mut bitmap_start = align_val_up(start, get_order(size_of::<u64>()));
+        let mut bitmap_start = align_up(start, get_order(size_of::<u64>()));
         let mut bitmap_len = 0usize;
         for i in 0..(MAX_FREE_AREA_ORDER - 1) {
             bitmap_len += (max_alloc_pages >> (i + 1usize) + 7) / 8;
         }
-        let page_start = align_val_up(bitmap_start + bitmap_len, get_order(32usize));
+        let page_start = align_up(bitmap_start + bitmap_len, get_order(32usize));
         // Cast bitmap to u64 pointer and memset to zero.
         let bitmap_ptr = bitmap_start as *mut u64;
         bitmap_ptr.write_bytes(0, (page_start - bitmap_start) / size_of::<u64>());
@@ -272,7 +272,7 @@ pub fn init(mem_regions: &[(usize, usize)]) {
             ((PAGE_SIZE + size_of::<Page>()) << (MAX_FREE_AREA_ORDER - 1usize));
         let alloc_pages = max_alloc_large_pages << (MAX_FREE_AREA_ORDER - 1usize);
         let page_end = page_start + size_of::<Page>() * alloc_pages;
-        let alloc_start = align_val_up(page_end, get_order(ALIGNMENT));
+        let alloc_start = align_up(page_end, get_order(ALIGNMENT));
 
         // Init `Page` objects.
         let free_area = zone.free_areas.get_unchecked_mut(MAX_FREE_AREA_ORDER - 1usize);

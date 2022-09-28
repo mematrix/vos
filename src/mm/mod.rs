@@ -84,7 +84,7 @@ fn map_identity<const ORDER: usize, const LEVEL: u32, const LENGTH: usize>(
     maps: &[(usize, usize)],
     bits: u32) {
     for (mut start, size) in maps {
-        let end = align::align_val_up(start + size, ORDER);
+        let end = align::align_up(start + size, ORDER);
         while start < end {
             root.map(start, start, bits, LEVEL);
             start += LENGTH;
@@ -145,8 +145,8 @@ pub fn map_ram_region_identity(table: *mut dyn Table, addr: usize, len: usize) {
     // Map the DRAM space (2GiB - MemEnd)
     let bits = EntryBits::Access.val() | EntryBits::Dirty.val() |
         EntryBits::Global.val() | EntryBits::ReadWriteExecute.val();
-    let mut start = align::align_val_down(addr, ORDER_1GB);
-    let end = align::align_val_up(addr + len, ORDER_1GB);
+    let mut start = align::align_down(addr, ORDER_1GB);
+    let end = align::align_up(addr + len, ORDER_1GB);
 
     let root = unsafe { &mut *table };
     const LENGTH_1GB: usize = 1usize << ORDER_1GB;

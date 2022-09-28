@@ -17,7 +17,7 @@ pub const fn get_order(alignment: usize) -> usize {
 ///
 /// This function always rounds up. So the returned value will always be
 /// **not less than** the `val`.
-pub const fn align_val_up(val: usize, order: usize) -> usize {
+pub const fn align_up(val: usize, order: usize) -> usize {
     let o = (1usize << order) - 1;
     (val + o) & !o
 }
@@ -27,7 +27,7 @@ pub const fn align_val_up(val: usize, order: usize) -> usize {
 /// to zero. So the returned value will always be **not greater than** the `val`.
 ///
 /// [`align_val_up`]: self::align_val_up
-pub const fn align_val_down(val: usize, order: usize) -> usize {
+pub const fn align_down(val: usize, order: usize) -> usize {
     let o = (1usize << order) - 1;
     val & !o
 }
@@ -40,7 +40,7 @@ pub const fn align_val_down(val: usize, order: usize) -> usize {
 pub const fn align_up_of<T>(val: usize) -> usize {
     // Type alignment is guaranteed be a power of 2.
     let order = align_of::<T>().trailing_zeros();
-    align_val_up(val, order as usize)
+    align_up(val, order as usize)
 }
 
 /// Returns the **aligned** value of `val`. Use the alignment of type `T`.
@@ -50,5 +50,5 @@ pub const fn align_up_of<T>(val: usize) -> usize {
 /// [`align_val_down`]: self::align_val_down
 pub const fn align_down_of<T>(val: usize) -> usize {
     let order = align_of::<T>().trailing_zeros();
-    align_val_down(val, order as usize)
+    align_down(val, order as usize)
 }

@@ -1,6 +1,6 @@
 //! Memory maps in the QEMU virt machine.
 
-use crate::util::align::{align_val_down, align_val_up};
+use crate::util::align::{align_down, align_up};
 use super::{ORDER_1GB, ORDER_2MB};
 
 /* QEMU RISC-V memory maps (qemu/hw/riscv/virt.c)
@@ -33,7 +33,7 @@ const APLIC_MIN_SIZE: usize = 0x4000;
 // const VIRT_IMSIC_MAX_SIZE: usize =
 
 const fn aplic_size(cpus: usize) -> usize {
-    APLIC_MIN_SIZE + align_val_up(cpus * 32, 14)
+    APLIC_MIN_SIZE + align_up(cpus * 32, 14)
 }
 
 const fn virt_plic_size(cpus: usize) -> usize {
@@ -48,7 +48,7 @@ const fn virt_plic_size(cpus: usize) -> usize {
 static VIRT_MEM_MAP_2MB: [(usize, usize); 10] = [
     // (0x100000, 0x2000),     // TEST and RTC. Lower than 2M, ignore to map
     (0x2000000, 0x10000),   // CLINT
-    (align_val_down(0x2F00000, ORDER_2MB), 0x4000), // ACLINT_SSWI
+    (align_down(0x2F00000, ORDER_2MB), 0x4000), // ACLINT_SSWI
     (0x3000000, 0x10000),   // PCIE_PIO
     (0x4000000, 0x2000000), // PLATFORM_BUS
     (0xc000000, virt_plic_size(VIRT_CPUS_MAX)), // PLIC

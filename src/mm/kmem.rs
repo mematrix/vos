@@ -2,7 +2,7 @@
 
 use core::{mem::size_of, ptr::null_mut};
 use crate::mm::{page::{PAGE_SIZE, zalloc}};
-use crate::util::align::align_val_up;
+use crate::util::align::align_up;
 
 
 #[repr(usize)]
@@ -94,7 +94,7 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
     }
 
     unsafe {
-        let size = align_val_up(sz, 3) + size_of::<AllocList>();
+        let size = align_up(sz, 3) + size_of::<AllocList>();
         let mut head = KMEM_HEAD;
         let tail = (head as *mut u8).add(KMEM_ALLOC * PAGE_SIZE) as *mut AllocList;
 
@@ -128,7 +128,7 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 
 /// Allocate sub-page level allocation based on bytes and zero the memory
 pub fn kzmalloc(sz: usize) -> *mut u8 {
-    let size = align_val_up(sz, 3);
+    let size = align_up(sz, 3);
     let ret = kmalloc(size);
 
     if !ret.is_null() {
