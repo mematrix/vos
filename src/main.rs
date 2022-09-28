@@ -125,7 +125,7 @@ struct COffsetAlignTest {
 /// Returns the SATP value (including the MODE).
 extern "C"
 fn m_init(hart_id: usize, dtb: *const u8) -> usize {
-    init::boot_setup(dtb);
+    let satp = init::boot_setup(dtb);
 
     match log::set_logger(&UART_LOGGER) {
         Ok(_) => { log::set_max_level(log::LevelFilter::Trace); }
@@ -135,7 +135,7 @@ fn m_init(hart_id: usize, dtb: *const u8) -> usize {
     println_k!("Hello Rust OS");
     println_k!("Running in hart#{}, dtb: {:p}", hart_id, dtb);
 
-    init::early_setup()
+    satp
 }
 
 #[no_mangle]
@@ -144,6 +144,8 @@ fn kmain() {
     // Main should initialize all sub-systems and get
     // ready to start scheduling. The last thing this
     // should do is start the timer.
+
+    init::early_setup();
 
     println_k!();
     println_k!("Now we are in the Supervisor mode.");

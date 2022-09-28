@@ -1,12 +1,14 @@
 //! Kernel initialization operation and data.
 
+mod boot_init;
 mod early_init;
 
 use core::mem::size_of;
 use core::ptr::{copy_nonoverlapping, null, slice_from_raw_parts};
 use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
-use crate::mm::{self, create_kernel_identity_map, map_ram_region_identity};
+use crate::driver::of;
+use crate::mm;
 use crate::sc;
 use crate::util::align;
 
@@ -19,17 +21,17 @@ pub static mut BOOT_COMMAND_LINE: [u8; COMMAND_LINE_SIZE] = [0u8; COMMAND_LINE_S
 static mut DEVICE_TREE_BLOB: *const u8 = null();
 
 /// Setup on boot time (Machine mode). Prepare kernel environment, copy dtb to kernel memory, init
-/// per-cpu stack data.
-pub fn boot_setup(boot_dtb: *const u8) {
+/// per-cpu stack data, and lastly, build the identity map for S-mode kernel address translation.
+pub fn boot_setup(boot_dtb: *const u8) -> usize {
     let uart = crate::driver::uart::Uart::default();
     uart.init_default();
 
     // Set the heap base address.
     mm::set_heap_base_addr(unsafe { crate::asm::mem_v::HEAP_START });
 
-    let fdt = unsafe { crate::driver::of::fdt::parse_from_ptr(boot_dtb) };
-    crate::driver::of::fdt::show_fdt_standard_nodes(&fdt);
-    crate::driver::of::fdt::dump_fdt(&fdt);
+    let fdt = unsafe { of::fdt::parse_from_ptr(boot_dtb) };
+    of::fdt::show_fdt_standard_nodes(&fdt);
+    of::fdt::dump_fdt(&fdt);
 
     // Copy dtb from the boot memory to the kernel memory.
     let dtb_size = fdt.total_size();
@@ -53,17 +55,27 @@ pub fn boot_setup(boot_dtb: *const u8) {
     let boot_cpu = sc::cpu::get_boot_cpu_stack();
     unsafe { crate::write_tp!(boot_cpu.frame.tp); }
 
+    // Build kernel identity map.
+    let memory = fdt.memory();
+    let id_map = boot_init::build_kernel_identity_map(&memory);
+
     // todo: smp::boot_setup wake up other CPUs to do boot init.
+
+    // Build SATP value and return.
+    let root = unsafe { &*id_map };
+    let addr = root.get_addr();
+    unsafe {
+        KERNEL_TABLE = addr;
+    }
+    mm::build_satp(root.get_mode(), 0, addr as u64)
 }
 
 /// Setup on the early kernel init time. Init the physical memory management subsystem.
-/// Returns the SATP value (including the MODE).
-pub fn early_setup() -> usize {
-    let fdt = unsafe { crate::driver::of::fdt::parse_from_ptr::<'static>(DEVICE_TREE_BLOB) };
+pub fn early_setup() {
+    let fdt = unsafe { of::fdt::parse_from_ptr::<'static>(DEVICE_TREE_BLOB) };
     let chosen = fdt.chosen();
     early_init::dt_scan_chosen(&chosen);
 
-    // todo: move to `early_init` mod. use buddy allocator.
     let memory = fdt.memory();
     let reg_count = memory.regions().count();
     assert!(reg_count > 0, "No memory region");
@@ -79,42 +91,11 @@ pub fn early_setup() -> usize {
         mm::write_on_stack(mem_size, collect_memory_region_and_init, user_data);
     }
 
-    // Construct the id map.
-    let map_2mb = mm::virt_qemu::get_mem_map_2mb();
-    let map_1gb = mm::virt_qemu::get_mem_map_1gb();
-    let id_map = create_kernel_identity_map(map_2mb, map_1gb);
-    for region in memory.regions() {
-        if let Some(size) = region.size {
-            let addr = region.starting_address as usize;
-            map_ram_region_identity(id_map, addr, size);
-        }
-    }
-
     // Debug output
     mm::page::print_page_allocations();
-
-    let root = unsafe { &*id_map };
-    // Test address translation
-    let va = 0x8000_8a86usize;
-    let pa = root.virt_to_phys(va);
-    if let Some(pa) = pa {
-        println_k!("Walk va {:#x} = pa {:#x}", va, pa);
-    } else {
-        println_k!("Test: Could not translate va {:#x} to pa.", va);
-    }
-
-    let addr = root.get_addr();
-    println_k!("Root table addr: {:#x}", addr);
-    unsafe {
-        KERNEL_TABLE = addr;
-    }
-    let mode = root.get_mode().val_satp() as usize;
-    println_k!("Root table mode: {:#x}", mode);
-
-    mode | (addr >> 12)
 }
 
-/// Setup when the kernel start. Init the `SLAB` allocator; un-flatten the DeviceTree to
+/// Setup when the kernel start. ; un-flatten the DeviceTree to
 /// the runtime object; init the kernel data view for specific devices; register device
 /// drivers; create devices and probe the drivers.
 pub fn setup() {
