@@ -45,6 +45,13 @@ pub(crate) fn show_fdt_standard_nodes(fdt: &Fdt) {
     }
 
     println_k!(" * CPUs:");
+    println_k!("   * Properties:");
+    if let Some(cpus_node) = fdt.find_node("/cpus") {
+        for p in cpus_node.properties() {
+            println_k!("     * {}: str({}), usize({} ({2:#x}))", p.name,
+                    p.as_str().unwrap_or(""), p.as_usize().unwrap_or_default());
+        }
+    }
     for (id, cpu) in fdt.cpus().enumerate() {
         println_k!("   * cpu#{}:", id);
         println_k!("     * ids: {}", cpu.ids().first());

@@ -46,7 +46,8 @@ pub fn boot_setup(boot_dtb: *const u8) -> usize {
     sc::boot_init(cpu_count);
     for (idx, cpu_node) in fdt.cpus().enumerate() {
         let cpu = sc::cpu::get_info_by_cpuid(idx);
-        cpu.set_clock_freq(cpu_node.clock_frequency());
+        // `clock_frequency` is not provided on risc-v cpu node.
+        // cpu.set_clock_freq(cpu_node.clock_frequency());
         cpu.set_timebase_freq(cpu_node.timebase_frequency());
         cpu.set_hart_id(cpu_node.ids().first());
     }
