@@ -1,5 +1,9 @@
 /target
 /Cargo.lock
+
+# Custom ignores
 /hdd.dsk
+/*.dtb
+/*.dts
 
 /.idea
