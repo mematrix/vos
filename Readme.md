@@ -38,5 +38,10 @@ qemu-system-riscv64 -machine virt -cpu rv64 -smp 4 -m 128M -nographic -s -drive 
 
 The `QEMU` arguments can be customized.
 
+## QEMU Minimum Version
+* Min Version: `7.1.0`.
+  * RISC-V privileged spec version **1.12.0** is supported from this version.
+  * [ChangeLog/7.1](https://wiki.qemu.org/ChangeLog/7.1#RISC-V)
+
 # License
 This project is under the `MIT` license ([LICENSE](./LICENSE)) and any dependence is using its original license.
