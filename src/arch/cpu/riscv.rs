@@ -246,6 +246,35 @@ pub fn satp_fense_asid(asid: usize) {
     }
 }
 
+/// Write `time` to `stimecmp` register.
+pub fn stimecmp_write(time: usize) {
+    unsafe {
+        asm!("csrw stimecmp, {}", in(reg) time);
+    }
+}
+
+/// Read the `time` value, add with `delta`, then write the result to `stimecmp`.
+pub fn stimecmp_write_delta(delta: usize) {
+    unsafe {
+        asm!(
+            "rdtime {tmp}",
+            "add {tmp}, {tmp}, {delta}",
+            "csrw stimecmp, {tmp}",
+            delta = in(reg) delta,
+            tmp = out(reg) _
+        );
+    }
+}
+
 /////////////////// Performance Registers /////////////////
+
+/// Read `time` register value.
+pub fn read_time() -> usize {
+    unsafe {
+        let t;
+        asm!("rdtime {}", out(reg) t);
+        t
+    }
+}
 
 // todo: read the Supervisor shadow perf registers: time, cycle, etc.
