@@ -180,6 +180,11 @@ fn kmain() {
     show_offset_test!(COffsetPackedTest);
     show_offset_test!(COffsetAlignTest);
 
+    // Enable interrupt.
+    arch::cpu::sstatus_sti();
+    // Set timer.
+    arch::cpu::stimecmp_write_delta(10_000_000);    // 1s
+
     println_k!("Start typing, I'll show what you typed!");
     let uart = driver::uart::Uart::default();
 
