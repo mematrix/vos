@@ -65,8 +65,9 @@ _start:
     # in Rust, it will return here.
 
     # Set machine mode interrupt flags. Although we will be not in the M-mode after
-    # the sret. set mPIE and mIE.
-    li t0, (0b01 << 11) | (1 << 7) | (1 << 3)
+    # the sret. Disable interrupts by clear mPIE and mIE, otherwise a spurious timer
+    # interrupt may occurs (mtimecmp < mtime).
+    li t0, (0b01 << 11) # | (1 << 7) | (1 << 3)
     csrw mstatus, t0
     # Machine interrupt enable register.
     li t0, (1 << 3) | (1 << 7) | (1 << 11)
