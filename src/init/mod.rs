@@ -20,9 +20,16 @@ pub static mut BOOT_COMMAND_LINE: [u8; COMMAND_LINE_SIZE] = [0u8; COMMAND_LINE_S
 
 static mut DEVICE_TREE_BLOB: *const u8 = null();
 
-/// Setup on boot time (Machine mode). Prepare kernel environment, copy dtb to kernel memory, init
-/// per-cpu stack data, and lastly, build the identity map for S-mode kernel address translation.
+/// Setup on boot time (Machine mode).
+///
+/// 1. Prepare kernel environment;
+/// 2. Parse the special DeviceTree node from the `boot_dtb` passed by the firmware;
+/// 3. Copy `boot_dtb` to kernel memory for full parsing later;
+/// 4. Init per-cpu stack data;
+/// 5. Build the identity map for S-mode kernel address translation.
+/// 6. Early smp setup, init the hart environment and prepare to run into kernel.
 pub fn boot_setup(boot_dtb: *const u8) -> usize {
+    // todo: init uart using the info from dtb.
     let uart = crate::driver::uart::Uart::default();
     uart.init_default();
 
@@ -60,8 +67,6 @@ pub fn boot_setup(boot_dtb: *const u8) -> usize {
     let memory = fdt.memory();
     let id_map = boot_init::build_kernel_identity_map(&memory);
 
-    // todo: smp::boot_setup wake up other CPUs to do boot init.
-
     // Build SATP value and return.
     let root = unsafe { &*id_map };
     let addr = root.get_addr();
@@ -69,10 +74,23 @@ pub fn boot_setup(boot_dtb: *const u8) -> usize {
         KERNEL_TABLE = addr;
     }
     mm::build_satp(root.get_mode(), 0, addr as u64)
+
+    // On this time, kernel identity map is already built.
+    // todo: smp::boot_setup wake up other CPUs to do boot init.
 }
 
-/// Setup on the early kernel init time. Init the physical memory management subsystem.
-pub fn early_setup() {
+/// Setup on the boot CPU (hart id == 0) when the kernel start.
+///
+/// 1. Init the physical memory management subsystem.
+/// 2. Register all kernel built-in drivers.
+/// 3. Un-flatten the DeviceTree to the runtime object, then build the kernel device tree and probe
+/// the device drivers.
+/// 4. Init file system.
+/// 5. Load drivers from disk and probe.
+/// 6. Standard I/O setup, GPU init, mouse/keyboard init, PIC (Platform Interrupt Control) init, etc.
+/// 7. Prepare the environment for running the kernel thread and user process (smp setup, scheduler
+/// init, process static data init, etc).
+pub fn kernel_setup() {
     let fdt = unsafe { of::fdt::parse_from_ptr::<'static>(DEVICE_TREE_BLOB) };
     let chosen = fdt.chosen();
     early_init::dt_scan_chosen(&chosen);
@@ -94,12 +112,7 @@ pub fn early_setup() {
 
     // Debug output
     mm::page::print_page_allocations();
-}
 
-/// Setup when the kernel start. ; un-flatten the DeviceTree to
-/// the runtime object; init the kernel data view for specific devices; register device
-/// drivers; create devices and probe the drivers.
-pub fn setup() {
     // todo: init slab
 
 }

@@ -145,12 +145,11 @@ fn kmain() {
     // ready to start scheduling. The last thing this
     // should do is start the timer.
 
-    init::early_setup();
+    init::kernel_setup();
 
     println_k!();
     println_k!("Now we are in the Supervisor mode.");
     println_k!();
-    init::setup();
 
     macro_rules! show_offset_test {
         ($ty:tt) => {{
@@ -180,10 +179,16 @@ fn kmain() {
     show_offset_test!(COffsetPackedTest);
     show_offset_test!(COffsetAlignTest);
 
-    // Enable interrupt.
-    arch::cpu::sstatus_sti();
+    // Create the first kernel thread: idle process with PID=0.
+    // Create the first user process: systemd process with PID=1. All other processes will
+    // be forked from this.
+
+    // Do schedule: We need first select a thread to run, write its `TrapFrame` into the
+    // `sscratch` CSR, then set the next timer event and open the interrupt flag.
     // Set timer.
     arch::cpu::stimecmp_write_delta(10_000_000);    // 1s
+    // Enable interrupt.
+    arch::cpu::sstatus_sti();
 
     println_k!("Start typing, I'll show what you typed!");
     let uart = driver::uart::Uart::default();
