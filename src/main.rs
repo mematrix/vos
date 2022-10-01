@@ -180,6 +180,9 @@ fn kmain() {
     show_offset_test!(COffsetAlignTest);
 
     // Create the first kernel thread: idle process with PID=0.
+    let mut idle_task = proc::create_idle_kernel_thread();
+    let frame = idle_task.get_trap_frame_ptr();
+    arch::cpu::sscratch_write(frame as _);
     // Create the first user process: systemd process with PID=1. All other processes will
     // be forked from this.
 
