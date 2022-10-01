@@ -1,7 +1,4 @@
-//! CPU and CPU-related routines.
-//!
-//! **Note**: After the `/driver/cpu` mod has been initialized, this mod becomes available.
-//! The `SLAB` allocator must be initialized before init this mod.
+//! CPU based context info.
 
 use core::arch::asm;
 use core::mem::size_of;

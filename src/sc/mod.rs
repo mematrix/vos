@@ -30,12 +30,12 @@
 //! [`TrapStack`]: self::cpu::TrapStack
 //! [`TrapStackFrame`]: self::cpu::TrapStackFrame
 
-pub(crate) mod cpu;
 mod trap;
 
 use core::mem::size_of;
 use crate::mm::page::PAGE_SIZE;
-use crate::sc::cpu::TrapStackFrame;
+use crate::smp::cpu;
+use crate::smp::cpu::TrapStackFrame;
 
 
 /// Alloc and init the **per-cpu** data.

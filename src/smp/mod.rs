@@ -1,6 +1,7 @@
 //! SMP config. Provides a simple struct to access the per-cpu cache data.
 
 mod cpu_info;
+pub(crate) mod cpu;
 
 pub use cpu_info::CpuInfo;
 
