@@ -5,7 +5,7 @@
 
 use core::arch::asm;
 use core::mem::size_of;
-use core::ptr::null_mut;
+use core::ptr::{addr_of, null_mut};
 use crate::mm::page::PAGE_SIZE;
 
 
@@ -142,12 +142,12 @@ pub fn get_frame_by_cpuid(cpuid: usize) -> *const TrapStackFrame {
     }
 }
 
-pub fn get_stack_by_cpuid(cpuid: usize) -> &'static TrapStack {
+pub fn get_stack_by_cpuid(cpuid: usize) -> &'static mut TrapStack {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 
         let cpu = CPU_STACKS.add(cpuid);
-        &*cpu
+        &mut *cpu
     }
 }
 
@@ -162,4 +162,19 @@ pub fn get_boot_cpu_stack() -> &'static mut TrapStack {
         }
     }
     panic!("Can not find the boot cpu (hart_id == 0) which is required.");
+}
+
+/// Get current hart's `CpuInfo` struct. Holding by the `tp` register.
+pub fn current_cpu_info() -> &'static mut CpuInfo {
+    unsafe {
+        &mut *(crate::read_tp!() as *mut CpuInfo)
+    }
+}
+
+pub fn current_cpu_frame() -> *const TrapStackFrame {
+    unsafe {
+        let info = crate::read_tp!() as *const CpuInfo;
+        let stack = container_of!(info, TrapStack, info);
+        addr_of!((*stack).frame)
+    }
 }
