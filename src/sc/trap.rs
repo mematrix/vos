@@ -1,7 +1,7 @@
 //! Handle traps in Supervisor mode.
 
-use crate::sc::cpu::CpuInfo;
 use crate::sc::TrapFrame;
+use crate::smp::CpuInfo;
 
 
 /// Check the `SPP` field of `sstatus`, return true if Previous Privilege is S-mode.
@@ -61,6 +61,8 @@ fn handle_trap(
                 // Supervisor timer interrupt.
                 // Do context switching.
                 trace!("Supervisor timer interrupt on hart #{}", hart.get_hart_id());
+                // Update next time event.
+                crate::arch::cpu::stimecmp_write_delta(10_000_000);
             }
             9 => {
                 // Supervisor external interrupt.
@@ -81,7 +83,7 @@ fn handle_trap(
                 // 2: Illegal Instruction.
                 if trap_from_s_mode(status) {
                     // S-mode code exception.
-                    panic!("Instruction exception, code: {}, epc: {:#x}, trap val: {}.",
+                    panic!("S-mode instruction exception, code: {}, epc: {:#x}, trap val: {}.",
                            exp_code, epc, val);
                 }
 
@@ -100,7 +102,7 @@ fn handle_trap(
                 // 6: Store/AMO address misaligned.
                 // 7: Store/AMO access fault.
                 if trap_from_s_mode(status) {
-                    panic!("Memory access exception, code: {}, epc: {:#x}, trap val: {}.",
+                    panic!("S-mode memory access exception, code: {}, epc: {:#x}, trap val: {}.",
                            exp_code, epc, val);
                 }
 
@@ -117,6 +119,10 @@ fn handle_trap(
                 // 12: Instruction page fault.
                 // 13: Load page fault.
                 // 15: Store/AMO page fault.
+                if trap_from_s_mode(status) {
+                    panic!("S-mode page fault, code: {}, epc: {:#x}, trap val: {}.", exp_code, epc, val);
+                }
+
                 error!("Page fault. exp code: {}, epc: {:#x}, trap val: {}.",
                     exp_code, epc, val);
                 return_pc += 4;
