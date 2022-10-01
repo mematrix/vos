@@ -70,8 +70,9 @@ _start:
     li t0, (0b01 << 11) # | (1 << 7) | (1 << 3)
     csrw mstatus, t0
     # Machine interrupt enable register.
-    li t0, (1 << 3) | (1 << 7) | (1 << 11)
-    csrw mie, t0
+    # A spurious timer interrupt may occurs once the `sret` instruction finished.
+    # li t0, (1 << 3) | (1 << 7) | (1 << 11)
+    # csrw mie, t0
 
     # Now set the S-mode CSRs.
 
