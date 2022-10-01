@@ -34,14 +34,7 @@ mod trap;
 
 use core::mem::size_of;
 use crate::mm::page::PAGE_SIZE;
-use crate::smp::cpu;
-use crate::smp::cpu::TrapStackFrame;
-
-
-/// Alloc and init the **per-cpu** data.
-pub fn boot_init(cpu_count: usize) {
-    cpu::init_per_cpu_data(cpu_count);
-}
+use crate::smp::TrapStackFrame;
 
 
 /// The trap frame is set into a structure and packed into each hart's `sscratch` register.

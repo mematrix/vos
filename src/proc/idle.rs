@@ -2,7 +2,7 @@
 
 use core::mem::zeroed;
 use crate::proc::task::TaskInfo;
-use crate::smp::cpu::current_cpu_frame;
+use crate::smp::current_cpu_frame;
 
 
 pub fn build_idle_task_info() -> TaskInfo {

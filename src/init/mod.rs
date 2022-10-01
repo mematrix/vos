@@ -8,8 +8,8 @@ use core::ptr::{copy_nonoverlapping, null, slice_from_raw_parts};
 use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
 use crate::driver::of;
-use crate::{mm, smp};
-use crate::sc;
+use crate::mm;
+use crate::smp;
 use crate::util::align;
 
 
@@ -50,9 +50,9 @@ pub fn boot_setup(boot_dtb: *const u8) -> usize {
 
     // Parse CPU node and prepare per-cpu stack.
     let cpu_count = fdt.cpus().count();
-    sc::boot_init(cpu_count);
+    smp::boot_init(cpu_count);
     for (idx, cpu_node) in fdt.cpus().enumerate() {
-        let cpu = smp::cpu::get_info_by_cpuid(idx);
+        let cpu = smp::get_cpu_info_by_cpuid_mut(idx);
         // `clock_frequency` is not provided on risc-v cpu node.
         // cpu.set_clock_freq(cpu_node.clock_frequency());
         cpu.set_timebase_freq(cpu_node.timebase_frequency());
@@ -60,7 +60,7 @@ pub fn boot_setup(boot_dtb: *const u8) -> usize {
     }
 
     // Set boot cpu (current cpu) env.
-    let boot_cpu = smp::cpu::get_boot_cpu_stack();
+    let boot_cpu = smp::get_boot_cpu_stack();
     unsafe { crate::write_tp!(boot_cpu.frame.tp); }
 
     // Build kernel identity map.

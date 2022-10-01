@@ -4,7 +4,7 @@ use core::arch::asm;
 use core::mem::size_of;
 use core::ptr::{addr_of, null_mut};
 use crate::mm::page::PAGE_SIZE;
-use crate::smp::CpuInfo;
+use crate::smp::{CPU_COUNT, CpuInfo};
 
 
 /// Context info for each **hart**.
@@ -18,7 +18,8 @@ pub struct TrapStackFrame {
     pub tp: usize,
 }
 
-const TRAP_STACK_SIZE: usize = PAGE_SIZE - size_of::<CpuInfo>() - size_of::<usize>() - size_of::<TrapStackFrame>();
+const TRAP_STACK_SIZE: usize = PAGE_SIZE - size_of::<CpuInfo>() - size_of::<usize>()
+    - size_of::<TrapStackFrame>();
 
 /// Stack memory used in the trap handler. One-page size.
 #[repr(C)]
@@ -35,10 +36,9 @@ sa::const_assert_eq!(size_of::<TrapStack>(), PAGE_SIZE);
 /////////////////// CPU DATA /////////////////////////
 
 static mut CPU_STACKS: *mut TrapStack = null_mut();
-static mut CPU_COUNT: usize = 0;
 
 /// Alloc and init the TrapStack memory for **per-cpu**.
-pub fn init_per_cpu_data(cpu_count: usize) {
+pub(super) fn init_per_cpu_stack(cpu_count: usize) {
     unsafe {
         let cpus = crate::mm::early::alloc_obj::<TrapStack>(cpu_count);
         assert!(!cpus.is_null());
@@ -56,17 +56,12 @@ pub fn init_per_cpu_data(cpu_count: usize) {
         }
 
         CPU_STACKS = cpus;
-        CPU_COUNT = cpu_count;
     }
 }
 
-pub fn get_cpu_count() -> usize {
-    unsafe {
-        CPU_COUNT
-    }
-}
 
-pub fn get_info_by_cpuid(cpuid: usize) -> &'static mut CpuInfo {
+/// Get mut `CpuInfo` object by the `cpuid`.
+pub fn get_cpu_info_by_cpuid_mut(cpuid: usize) -> &'static mut CpuInfo {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 
@@ -75,16 +70,28 @@ pub fn get_info_by_cpuid(cpuid: usize) -> &'static mut CpuInfo {
     }
 }
 
-pub fn get_frame_by_cpuid(cpuid: usize) -> *const TrapStackFrame {
+/// Get `CpuInfo` object by the `cpuid`.
+pub fn get_cpu_info_by_cpuid(cpuid: usize) -> &'static CpuInfo {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 
         let cpu = CPU_STACKS.add(cpuid);
-        &(*cpu).frame as _
+        &(*cpu).info
     }
 }
 
-pub fn get_stack_by_cpuid(cpuid: usize) -> &'static mut TrapStack {
+/// Get `TrapStackFrame` object by the `cpuid`.
+pub fn get_cpu_frame_by_cpuid(cpuid: usize) -> *const TrapStackFrame {
+    unsafe {
+        debug_assert!(cpuid < CPU_COUNT);
+
+        let cpu = CPU_STACKS.add(cpuid);
+        addr_of!((*cpu).frame)
+    }
+}
+
+/// Get mut `TrapStack` object by the `cpuid`.
+pub fn get_cpu_stack_by_cpuid_mut(cpuid: usize) -> &'static mut TrapStack {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 
@@ -93,6 +100,7 @@ pub fn get_stack_by_cpuid(cpuid: usize) -> &'static mut TrapStack {
     }
 }
 
+/// Get cpu stack of boot cpu (hart id == 0).
 pub fn get_boot_cpu_stack() -> &'static mut TrapStack {
     unsafe {
         let count = CPU_COUNT;
@@ -113,6 +121,7 @@ pub fn current_cpu_info() -> &'static mut CpuInfo {
     }
 }
 
+/// Get current hart's `TrapStackFrame` object.
 pub fn current_cpu_frame() -> *const TrapStackFrame {
     unsafe {
         let info = crate::read_tp!() as *const CpuInfo;
