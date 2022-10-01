@@ -18,6 +18,7 @@ mod constant;
 mod arch;
 mod init;
 mod driver;
+mod smp;
 mod mm;
 mod dev;
 mod fs;
