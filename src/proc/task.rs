@@ -1,8 +1,11 @@
 //! Task struct definitions. `task` is the basic scheduler unit on the CPU hart (On user mode, a `task`
 //! is also known as `thread`).
 
+use core::ptr::addr_of_mut;
 use crate::sc::TrapFrame;
 
+
+#[repr(C)]
 pub struct TaskInfo {
     frame: TrapFrame,
     tid: u32,
@@ -26,6 +29,12 @@ impl TaskInfo {
     #[inline(always)]
     pub fn get_trap_frame(&mut self) -> &mut TrapFrame {
         &mut self.frame
+    }
+
+    /// Get the trap frame object ptr.
+    #[inline(always)]
+    pub fn get_trap_frame_ptr(&mut self) -> *mut TrapFrame {
+        addr_of_mut!(self.frame)
     }
 
     /// Convert a `TrapFrame` ptr to the `TaskInfo` ptr.
