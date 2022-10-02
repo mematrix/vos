@@ -16,6 +16,10 @@ pub(crate) mod page;
 pub(crate) mod mmu;
 pub(crate) mod kmem;
 pub(crate) mod virt_qemu;
+mod vmem;
+
+// Re-export
+pub use vmem::*;
 
 use core::arch::asm;
 
