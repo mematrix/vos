@@ -2,7 +2,7 @@
 #![no_std]
 #![feature(default_alloc_error_handler)]    // GlobalAllocator need this.
 #![feature(inline_const)]   // Needed in 'macros/ptr.rs'.
-#![feature(const_ptr_offset_from)]
+#![feature(const_refs_to_cell)]     // An negative error reported by v1.66.0-nightly
 
 #[macro_use]
 extern crate log;
