@@ -41,7 +41,8 @@
 //! [`page_address`]: self::page_address
 
 use core::mem::size_of;
-use core::ptr::{addr_of, null_mut};
+use core::ptr::null_mut;
+use core::sync::atomic::{AtomicU32, Ordering};
 use crate::util::align::{align_down, align_up, get_order};
 use crate::util::list::{self, List};
 
@@ -51,6 +52,22 @@ pub const PAGE_ORDER: usize = 12;
 pub const PAGE_SIZE: usize = 1 << 12;
 
 
+/// Page flags definition.
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum PageFlag {
+    /// Page is used in the SLAB/SLUB allocator.
+    Slab = 1 << 0,
+    /// Page is shared between multiple processes.
+    Shared = 1 << 1,
+}
+
+impl PageFlag {
+    pub const fn val(self) -> u32 {
+        self as u32
+    }
+}
+
 /// Each **page** is described by the `Page` structure.
 ///
 /// We guarantee that `size_of::<Page>() % 16 == 0` and the `Page` object will be allocated
@@ -58,16 +75,17 @@ pub const PAGE_SIZE: usize = 1 << 12;
 /// object will always guard to 0 and can be safety used, such as save the page alloc order.
 ///
 /// If a **page** is allocated, then the `Page` structure associated with it will be free to
-/// use to store private data, except for the first 4 bytes which are used to store the page
+/// use to store private data, except for the last 4 bytes which are used to store the page
 /// flags. [`get_private`] method can be used to retrieve the private area start address, and
 /// [`get_private_size`] method can be used to get the available size of private area, this is
 /// a **const** function so it can be called at the compile-time context to do some static
-/// assertions. The private size is guaranteed to at least 28 bytes.
+/// assertions. The private size is guaranteed to at least 28 bytes; the private data address
+/// is guaranteed to align with 16.
 ///
-/// The least 16 bits of the inner `flags` field are used by the Page allocator, while the most
-/// 16 bits can be used to store custom flags. See methods [`get_custom_flags`], [`set_custom_flags`]
+/// The least 24 bits of the inner `flags` field are used by the Page allocator, while the most
+/// 8 bits can be used to store custom flags. See methods [`get_custom_flags`], [`set_custom_flags`]
 /// and [`replace_custom_flags`] for more info, note that though the param or return type is `u32`,
-/// only the least 16 bits is valid and used.
+/// only the least 8 bits is valid and used.
 ///
 /// [`get_private`]: self::Page::get_private
 /// [`get_private_size`]: self::Page::get_private_size
@@ -76,12 +94,12 @@ pub const PAGE_SIZE: usize = 1 << 12;
 /// [`replace_custom_flags`]: self::Page::replace_custom_flags
 #[repr(C)]
 pub struct Page {
-    /// bits\[7:0] store the idx of zone that self page belongs. bits\[15:8] store inner flags.
-    /// bits\[31:16] store custom flags.
-    flags: u32,
-    reserve: u32,
-    padding: usize,
     head: List,
+    padding: usize,
+    ref_count: AtomicU32,
+    /// bits\[7:0] store the idx of zone that self page belongs. bits\[23:8] store inner flags.
+    /// bits\[31:24] store custom flags.
+    flags: u32,
 }
 
 // Assert the size of `Page` equals to multiple times of 32bytes.
@@ -89,59 +107,113 @@ sa::const_assert_eq!(size_of::<Page>() % 32, 0);
 
 impl Page {
     /// Get the available size for private usage.
-    #[inline]
+    #[inline(always)]
     pub const fn get_private_size() -> usize {
         size_of::<Page>() - size_of::<u32>()
     }
 
     /// Get a pointer of the private memory.
-    #[inline]
+    ///
+    /// **Note**: data in this memory may be in **uninitialized** state.
+    #[inline(always)]
     pub fn get_private(&mut self) -> *mut u8 {
-        addr_of!(self.reserve) as *mut u8
+        self as *mut Page as *mut u8
+    }
+
+    /// Get the flags. **Note**: custom flags are also returned.
+    #[inline(always)]
+    pub fn read_flags(&self) -> u32 {
+        self.flags >> 8
+    }
+
+    /// Check if the `flag` is set.
+    #[inline(always)]
+    pub fn is_flag_set(&self, flag: PageFlag) -> bool {
+        ((self.flags >> 8) & flag.val()) != 0
+    }
+
+    /// Set page flag.
+    #[inline(always)]
+    pub fn set_flag(&mut self, flag: PageFlag) {
+        self.flags |= flag.val() << 8;
+    }
+
+    /// Clear page flag.
+    #[inline(always)]
+    pub fn clear_flag(&mut self, flag: PageFlag) {
+        self.flags &= !(flag.val() << 8);
     }
 
     /// Get the custom flags.
-    #[inline]
+    #[inline(always)]
     pub fn read_custom_flags(&self) -> u32 {
-        self.flags >> 16
+        self.flags >> 24
     }
 
     /// Replace the custom flags. This will overwrite the total custom flags value.
     ///
     /// **Note**: Only the least 16 bits of `flag` is used.
-    #[inline]
+    #[inline(always)]
     pub fn replace_custom_flags(&mut self, flag: u32) {
-        self.flags = (self.flags & 0xffffu32) | (flag << 16);
+        self.flags = (self.flags & 0xff_ffffu32) | (flag << 24);
     }
 
     /// Set the certain custom flags. If a bit of `flag` is 1, **set** the correspond custom flag bit;
     /// otherwise leave the correspond flag bit unchanged.
     ///
     /// **Note**: Only the least 16 bits of `flag` is used.
-    #[inline]
+    #[inline(always)]
     pub fn set_custom_flags(&mut self, flag: u32) {
-        self.flags |= flag << 16;
+        self.flags |= flag << 24;
     }
 
     /// Clear the certain custom flags. If a bit of `flag` is 1, then **clear** the correspond custom
     /// flag bit; otherwise leave the correspond flag bit unchanged.
     ///
     /// **Note**: Only the least 16 bits of `flag` is used.
-    #[inline]
+    #[inline(always)]
     pub fn clear_custom_flags(&mut self, flag: u32) {
-        self.flags &= !(flag << 16);
+        self.flags &= !(flag << 24);
     }
 
     /// Set zone idx.
-    #[inline]
+    #[inline(always)]
     fn set_zone_idx(&mut self, idx: usize) {
         self.flags = (self.flags & !0xffu32) | (idx & 0xffusize) as u32;
     }
 
     /// Get zone idx.
-    #[inline]
+    #[inline(always)]
     fn get_zone_idx(&self) -> usize {
         (self.flags & 0xffu32) as usize
+    }
+
+    /// Get the ref count. **Note**: only available when page has been set [`PageFlag::Shared`] flag.
+    ///
+    /// [`PageFlag::Shared`]: self::PageFlag::Shared
+    #[inline(always)]
+    pub fn ref_count(&self) -> u32 {
+        self.ref_count.load(Ordering::Relaxed)
+    }
+
+    /// Increase the ref count of the shared page.
+    ///
+    /// **Note**: it is an **Undefined Behavior** if the page has no [`PageFlag::Shared`] flag set.
+    ///
+    /// [`PageFlag::Shared`]: self::PageFlag::Shared
+    #[inline(always)]
+    pub fn increase_ref(&mut self) {
+        self.ref_count.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// Decrease the ref count and return current ref count (after the decrease operation).
+    ///
+    /// **Note**: it is an **Undefined Behavior** if the page has no [`PageFlag::Shared`] flag set.
+    ///
+    /// [`PageFlag::Shared`]: self::PageFlag::Shared
+    #[inline(always)]
+    pub fn decrease_ref(&mut self) -> u32 {
+        self.ref_count.fetch_sub(1, Ordering::AcqRel) - 1u32
     }
 }
 
@@ -264,7 +336,7 @@ pub fn init(mem_regions: &[(usize, usize)]) {
         for i in 0..max_alloc_large_pages {
             // All `Page`obj to free_area[MAX_ORDER - 1].free_list.
             let page = page_base.add(i * PAGE_COUNT_LAST_AREA);
-            (*page).flags = 0;
+            // (*page).flags = 0;
             let page_head = &mut (*page).head;
             list::partial_append(&mut *prev_node, page_head);
             prev_node = page_head as _;
@@ -429,7 +501,11 @@ fn do_alloc_pages(_flags: usize, order: usize) -> *mut Page {
             // Try alloc on zone
             let page = alloc_page_on_zone(zone, order);
             if !page.is_null() {
-                (*page).set_zone_idx(zone_idx);
+                // Directly assign to clear the flags.
+                (*page).flags = zone_idx as u32;
+                // (*page).set_zone_idx(zone_idx);
+                // Reset the ref count.
+                (*page).ref_count.store(0, Ordering::Relaxed);
                 return page;
             }
         }
