@@ -70,7 +70,7 @@ pub fn get_alloc_page_num() -> usize {
 }
 
 /// Initialize the kernel's memory.
-pub fn init() {
+pub(super) fn kmem_init() {
     unsafe {
         // Allocate 512 kernel pages (512 * 4KiB = 2MiB)
         const ALLOC_COUNT: usize = 512;
@@ -89,7 +89,7 @@ pub fn init() {
 ///
 /// If the function successfully allocates a memory, the memory is guaranteed to be aligned
 /// to 8 bytes.
-pub fn kmalloc(sz: usize) -> *mut u8 {
+pub fn kmalloc(sz: usize, _flags: usize) -> *mut u8 {
     if sz == 0 {
         return null_mut();
     }
@@ -128,9 +128,9 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 }
 
 /// Allocate sub-page level allocation based on bytes and zero the memory
-pub fn kzmalloc(sz: usize) -> *mut u8 {
+pub fn kzalloc(sz: usize, flags: usize) -> *mut u8 {
     let size = align_up(sz, 3);
-    let ret = kmalloc(size);
+    let ret = kmalloc(size, flags);
 
     if !ret.is_null() {
         // We have aligned the size with `1 << 3`, and the return pointer is guaranteed
@@ -217,7 +217,7 @@ unsafe impl GlobalAlloc for OsGlobalAlloc {
         // We align to the next page size so that when
         // we divide by PAGE_SIZE, we get exactly the number
         // of pages necessary.
-        kzmalloc(layout.size())
+        kzalloc(layout.size(), 0)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
