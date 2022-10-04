@@ -20,6 +20,7 @@ pub(crate) mod mmu;
 pub(crate) mod virt_qemu;
 mod kmem;
 mod vmem;
+mod rust_alloc;
 
 // Re-export
 pub use vmem::*;
