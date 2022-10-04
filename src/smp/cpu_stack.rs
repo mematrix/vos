@@ -23,24 +23,24 @@ const TRAP_STACK_SIZE: usize = PAGE_SIZE - size_of::<CpuInfo>() - size_of::<usiz
 
 /// Stack memory used in the trap handler. One-page size.
 #[repr(C)]
-pub struct TrapStack {
+pub struct HartTrapStack {
     _stack: [u8; TRAP_STACK_SIZE],
     pub reserved: usize,
     pub info: CpuInfo,
     pub frame: TrapStackFrame,
 }
 
-sa::const_assert_eq!(size_of::<TrapStack>(), PAGE_SIZE);
+sa::const_assert_eq!(size_of::<HartTrapStack>(), PAGE_SIZE);
 
 
 /////////////////// CPU DATA /////////////////////////
 
-static mut CPU_STACKS: *mut TrapStack = null_mut();
+static mut CPU_STACKS: *mut HartTrapStack = null_mut();
 
-/// Alloc and init the TrapStack memory for **per-cpu**.
+/// Alloc and init the HartTrapStack memory for **per-cpu**.
 pub(super) fn init_per_cpu_stack(cpu_count: usize) {
     unsafe {
-        let cpus = crate::mm::early::alloc_obj::<TrapStack>(cpu_count);
+        let cpus = crate::mm::early::alloc_obj::<HartTrapStack>(cpu_count);
         assert!(!cpus.is_null());
 
         // Read the gp register value.
@@ -90,8 +90,8 @@ pub fn get_cpu_frame_by_cpuid(cpuid: usize) -> *const TrapStackFrame {
     }
 }
 
-/// Get mut `TrapStack` object by the `cpuid`.
-pub fn get_cpu_stack_by_cpuid_mut(cpuid: usize) -> &'static mut TrapStack {
+/// Get mut `HartTrapStack` object by the `cpuid`.
+pub fn get_cpu_stack_by_cpuid_mut(cpuid: usize) -> &'static mut HartTrapStack {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 
@@ -101,7 +101,7 @@ pub fn get_cpu_stack_by_cpuid_mut(cpuid: usize) -> &'static mut TrapStack {
 }
 
 /// Get cpu stack of boot cpu (hart id == 0).
-pub fn get_boot_cpu_stack() -> &'static mut TrapStack {
+pub fn get_boot_cpu_stack() -> &'static mut HartTrapStack {
     unsafe {
         let count = CPU_COUNT;
         for id in 0..count {
@@ -125,7 +125,7 @@ pub fn current_cpu_info() -> &'static mut CpuInfo {
 pub fn current_cpu_frame() -> *const TrapStackFrame {
     unsafe {
         let info = crate::read_tp!() as *const CpuInfo;
-        let stack = container_of!(info, TrapStack, info);
+        let stack = container_of!(info, HartTrapStack, info);
         addr_of!((*stack).frame)
     }
 }

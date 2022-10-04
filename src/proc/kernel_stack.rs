@@ -15,7 +15,7 @@ use crate::smp::TrapStackFrame;
 /// > **Note**: This stack is used only when the interrupt is enabled while we are handling
 /// the sys-call. If the interrupt is disabled (This is the default setting when handling a
 /// trap), we use the **Hart Trap Stack** binding to each hart as the function stack. See
-/// [`TrapStack`].
+/// [`HartTrapStack`].
 ///
 /// The *Full* kernel stack is allocated as a single [page], so its size is 4KiB and the
 /// available stack range is `[0, 4096 - sizeof::<KernelStack>() - 8]` (8bytes reserved).
@@ -29,7 +29,7 @@ use crate::smp::TrapStackFrame;
 /// object's start address.
 ///
 /// [page]: crate::mm::page
-/// [`TrapStack`]: crate::smp::TrapStack
+/// [`HartTrapStack`]: crate::smp::HartTrapStack
 /// [`KernelStack`]: self::KernelStack
 /// [`TaskTrapFrame`]: crate::proc::task::TaskTrapFrame
 #[repr(C)]
