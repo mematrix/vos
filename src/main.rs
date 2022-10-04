@@ -23,7 +23,7 @@ mod mm;
 mod dev;
 mod fs;
 mod proc;
-mod sc;
+mod sched;
 
 use core::arch::asm;
 use log::{Log, Metadata, Record};

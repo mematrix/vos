@@ -35,7 +35,7 @@ asm_trap_handler:
     # csrrw will atomically swap t6 into sscratch and the old value of sscratch into t6. This is
     # nice because we just switched values and didn't destroy anything -- all atomically!
     csrrw t6, sscratch, t6
-    # in sc/mod.rs we have a structure `TrapFrame` of:
+    # in sched/sched we have a structure `TaskTrapFrame` of:
     #  32 gp regs		0
     #  32 fp regs		256
     # We use t6 as the temporary register because it is the very bottom register (x31)
@@ -67,16 +67,16 @@ asm_trap_handler:
         .set i, i+1
     .endr
 1:
-    # Get ready to go into Rust (sc/trap.rs).
+    # Get ready to go into Rust (sched/trap.rs).
     csrr a0, sepc
-    # Save pc (see TrapFrame definition).
+    # Save pc (see TaskTrapFrame definition).
     sd a0, 512(t5)
     csrr a1, stval
     csrr a2, scause
     #csrr a3, mhartid
     csrr a3, sstatus
     csrr a4, sscratch   # t5
-    # Load CPU stack. (see TrapStackFrame in sc/cpu.rs)
+    # Load CPU stack. (see TrapStackFrame in smp/cpu_stack.rs)
     ld t0, 520(t5)
     ld sp, 0(t0)
     ld gp, 8(t0)

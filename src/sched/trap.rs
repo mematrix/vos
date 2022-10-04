@@ -24,7 +24,7 @@ fn trap_from_s_mode(status: usize) -> bool {
 /// - `a1`: `stval` value, saved the interrupt-associated value.
 /// - `a2`: `scause` value, the cause of interrupt.
 /// - `a3`: `sstatus` value.
-/// - `a4`: `sscratch` value, points to the [`TrapFrame`] currently running.
+/// - `a4`: `sscratch` value, points to the [`TaskTrapFrame`] currently running.
 /// - `a5`: Current hart's associated [`CpuInfo`].
 ///
 /// This function returns the new `pc` value that continue to run after the trap returns.
@@ -35,8 +35,8 @@ fn trap_from_s_mode(status: usize) -> bool {
 /// is raised by `ecall`, otherwise there will be a loop (return to `ecall` instruction and
 /// trap again).
 ///
-/// [`TrapFrame`]: crate::sc::TrapFrame
-/// [`CpuInfo`]: crate::sc::cpu::CpuInfo
+/// [`TaskTrapFrame`]: crate::proc::task::TaskTrapFrame
+/// [`CpuInfo`]: crate::smp::CpuInfo
 #[no_mangle]
 extern "C"
 fn handle_trap(
