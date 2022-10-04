@@ -76,7 +76,7 @@ asm_trap_handler:
     #csrr a3, mhartid
     csrr a3, sstatus
     csrr a4, sscratch   # t5
-    # Load CPU stack. (see TrapStackFrame in smp/cpu_stack.rs)
+    # Load CPU stack. (see HartFrameInfo in smp/cpu_stack.rs)
     ld t0, 520(t5)
     ld sp, 0(t0)
     ld gp, 8(t0)

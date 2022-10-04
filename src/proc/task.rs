@@ -3,7 +3,7 @@
 
 use core::ptr::addr_of_mut;
 use crate::proc::kernel_stack::KernelStack;
-use crate::smp::TrapStackFrame;
+use crate::smp::HartFrameInfo;
 
 
 /// Task struct.
@@ -80,7 +80,7 @@ pub struct TaskTrapFrame {
     // 512
     pub pc: usize,
     // 520
-    pub cpu_stack: *const TrapStackFrame,
+    pub cpu_stack: *const HartFrameInfo,
     // 528
     pub kernel_stack: *mut KernelStack,
     // 536

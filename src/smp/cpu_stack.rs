@@ -9,7 +9,7 @@ use crate::smp::{CPU_COUNT, CpuInfo};
 
 /// Context info for each **hart**.
 #[repr(C)]
-pub struct TrapStackFrame {
+pub struct HartFrameInfo {
     /// `sp` register (`x2`). Stack frame pointer.
     pub sp: usize,
     /// `gp` register (`x3`). Global pointer, set to `_global_pointer` defined in the linker script.
@@ -19,7 +19,7 @@ pub struct TrapStackFrame {
 }
 
 const TRAP_STACK_SIZE: usize = PAGE_SIZE - size_of::<CpuInfo>() - size_of::<usize>()
-    - size_of::<TrapStackFrame>();
+    - size_of::<HartFrameInfo>();
 
 /// Stack memory used in the trap handler. One-page size.
 #[repr(C)]
@@ -27,7 +27,7 @@ pub struct HartTrapStack {
     _stack: [u8; TRAP_STACK_SIZE],
     pub reserved: usize,
     pub info: CpuInfo,
-    pub frame: TrapStackFrame,
+    pub frame: HartFrameInfo,
 }
 
 sa::const_assert_eq!(size_of::<HartTrapStack>(), PAGE_SIZE);
@@ -80,8 +80,8 @@ pub fn get_cpu_info_by_cpuid(cpuid: usize) -> &'static CpuInfo {
     }
 }
 
-/// Get `TrapStackFrame` object by the `cpuid`.
-pub fn get_cpu_frame_by_cpuid(cpuid: usize) -> *const TrapStackFrame {
+/// Get `HartFrameInfo` object by the `cpuid`.
+pub fn get_cpu_frame_by_cpuid(cpuid: usize) -> *const HartFrameInfo {
     unsafe {
         debug_assert!(cpuid < CPU_COUNT);
 
@@ -121,8 +121,8 @@ pub fn current_cpu_info() -> &'static mut CpuInfo {
     }
 }
 
-/// Get current hart's `TrapStackFrame` object.
-pub fn current_cpu_frame() -> *const TrapStackFrame {
+/// Get current hart's `HartFrameInfo` object.
+pub fn current_cpu_frame() -> *const HartFrameInfo {
     unsafe {
         let info = crate::read_tp!() as *const CpuInfo;
         let stack = container_of!(info, HartTrapStack, info);

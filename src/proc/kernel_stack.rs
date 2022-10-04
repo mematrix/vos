@@ -3,7 +3,7 @@
 use core::mem::size_of;
 use crate::mm::page::PAGE_SIZE;
 use crate::proc::task::TaskTrapFrame;
-use crate::smp::TrapStackFrame;
+use crate::smp::HartFrameInfo;
 
 
 /// Kernel stack context frame. Used when interrupt is enabled while handling the `ecall`
@@ -41,7 +41,7 @@ pub struct KernelTrapFrame {
     // 512
     pub pc: usize,
     // 520
-    pub cpu_stack: *const TrapStackFrame,
+    pub cpu_stack: *const HartFrameInfo,
     // 528
     pub user_frame: *mut TaskTrapFrame,
 }

@@ -12,7 +12,7 @@
 //! `cpu_stack` (defined in [`HartTrapStack`]) is binding to the current **hart** that execute
 //! the instructions, each time a **Thread** is scheduled to current **hart**, the `cpu_stack`
 //! field will update to reference the [`HartTrapStack`] object of current **hart**. To
-//! simplify the asm code, the `cpu_stack` will point to the [`TrapStackFrame`] object which
+//! simplify the asm code, the `cpu_stack` will point to the [`HartFrameInfo`] object which
 //! is the inner object of the [`HartTrapStack`].
 //!
 //! The context registers:
@@ -28,6 +28,6 @@
 //!
 //! [`TaskTrapFrame`]: crate::proc::task::TaskTrapFrame
 //! [`HartTrapStack`]: crate::smp::HartTrapStack
-//! [`TrapStackFrame`]: crate::smp::TrapStackFrame
+//! [`HartFrameInfo`]: crate::smp::HartFrameInfo
 
 mod trap;
