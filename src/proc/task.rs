@@ -10,12 +10,14 @@ pub struct TaskInfo {
     frame: TrapFrame,
     tid: u32,
     // Process info
+    /// Thread exit code.
+    exit_code: usize
 }
 
 impl TaskInfo {
     /// Get the `tid`.
     #[inline(always)]
-    pub fn get_tid(&self) -> u32 {
+    pub fn tid(&self) -> u32 {
         self.tid
     }
 
@@ -25,9 +27,21 @@ impl TaskInfo {
         self.tid = tid;
     }
 
+    /// Get thread exit code.
+    #[inline(always)]
+    pub fn exit_code(&self) -> usize {
+        self.exit_code
+    }
+
+    /// Set thread exit code.
+    #[inline(always)]
+    pub fn set_exit_code(&mut self, exit_code: usize) {
+        self.exit_code = exit_code;
+    }
+
     /// Get the trap frame object ref.
     #[inline(always)]
-    pub fn get_trap_frame(&mut self) -> &mut TrapFrame {
+    pub fn trap_frame(&mut self) -> &mut TrapFrame {
         &mut self.frame
     }
 

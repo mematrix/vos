@@ -43,7 +43,7 @@ impl ThreadBuilder {
             task_info: unsafe { &mut *(ptr as *mut TaskInfo) },
         };
         ret.task_info.set_tid(KERNEL_TID.fetch_add(1, Ordering::AcqRel));
-        let frame = ret.task_info.get_trap_frame();
+        let frame = ret.task_info.trap_frame();
         // On kernel thread, the `kernel_stack` points to the stack memory.
         frame.kernel_stack = stack as _;
         frame.satp = get_satp_identity_map();
@@ -73,7 +73,8 @@ fn start_kernel_thread(entry: ThreadEntry, user_data: *mut (), task_info: &mut T
     // Before run.
     // Start run task.
     let ret = entry(user_data);
-    info!("Kernel thread (tid = {}) finished, return {}.", task_info.get_tid(), ret);
+    info!("Kernel thread (tid = {}) finished, return {}.", task_info.tid(), ret);
 
     // todo: scheduler do last schedule and thread die work.
+    task_info.set_exit_code(ret);
 }
