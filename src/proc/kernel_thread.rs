@@ -3,7 +3,7 @@
 use core::mem::size_of;
 use core::sync::atomic::{AtomicU32, Ordering};
 use crate::arch::cpu::{self, Register};
-use crate::mm::{page, kfree, kzalloc, get_satp_identity_map};
+use crate::mm::{page, kfree, kzalloc, get_satp_identity_map, PAGE_SIZE};
 use crate::proc::task::TaskInfo;
 
 
@@ -59,7 +59,7 @@ impl ThreadBuilder {
             *regs.get_unchecked_mut(cpu::reg(Register::A2)) = ptr as _;
             // Set thread stack. Stack is growing from high to low address.
             // todo: ::constant::PAGE_SIZE definition
-            let top = stack + page::PAGE_SIZE * (1usize << 2) - size_of::<usize>();
+            let top = stack + PAGE_SIZE * (1usize << 2) - size_of::<usize>();
             *regs.get_unchecked_mut(cpu::reg(Register::Sp)) = top;
         }
 
