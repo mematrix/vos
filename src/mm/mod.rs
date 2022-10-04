@@ -29,6 +29,12 @@ use core::arch::asm;
 use crate::arch::cpu;
 
 
+/// Order of page-size.
+pub const PAGE_ORDER: usize = 12;
+/// Page size.
+pub const PAGE_SIZE: usize = 1 << 12;
+
+
 /// Heap area base address. Init before calling `early_init` and can not change after the
 /// `early_init` call.
 static mut HEAP_BASE: usize = 0;

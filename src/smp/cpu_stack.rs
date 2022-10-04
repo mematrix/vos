@@ -3,7 +3,7 @@
 use core::arch::asm;
 use core::mem::size_of;
 use core::ptr::{addr_of, null_mut};
-use crate::mm::page::PAGE_SIZE;
+use crate::mm::PAGE_SIZE;
 use crate::smp::{CPU_COUNT, CpuInfo};
 
 

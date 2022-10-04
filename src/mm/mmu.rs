@@ -18,13 +18,14 @@
 //! [`enable_page_allocator`]: self::enable_page_allocator
 
 use core::ptr::null_mut;
-use crate::mm::page::{PAGE_ORDER, PAGE_SIZE};
+use crate::mm::{PAGE_ORDER, PAGE_SIZE};
 
 
 /// Delegate allocator API for the `mmu` mod.
 mod allocator {
     use crate::mm::early::alloc_bytes_aligned;
-    use crate::mm::page::{self, PAGE_ORDER, PAGE_SIZE};
+    use crate::mm::page::{self};
+    use crate::mm::{PAGE_ORDER, PAGE_SIZE};
 
     fn early_alloc_page() -> usize {
         alloc_bytes_aligned(PAGE_SIZE, PAGE_ORDER) as usize

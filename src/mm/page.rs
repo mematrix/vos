@@ -43,13 +43,9 @@
 use core::mem::size_of;
 use core::ptr::null_mut;
 use core::sync::atomic::{AtomicU32, Ordering};
+use crate::mm::{PAGE_ORDER, PAGE_SIZE};
 use crate::util::align::{align_down, align_up, get_order};
 use crate::util::list::{self, List};
-
-
-pub const PAGE_ORDER: usize = 12;
-/// Page size.
-pub const PAGE_SIZE: usize = 1 << 12;
 
 
 /// Page flags definition.

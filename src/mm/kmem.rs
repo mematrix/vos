@@ -2,7 +2,8 @@
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::{mem::size_of, ptr::null_mut};
-use crate::mm::page::{PAGE_SIZE, alloc_pages};
+use crate::mm::page::alloc_pages;
+use crate::mm::PAGE_SIZE;
 use crate::util::align::align_up;
 
 

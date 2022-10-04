@@ -1,7 +1,7 @@
 //! Kernel stack structs definition.
 
 use core::mem::size_of;
-use crate::mm::page::PAGE_SIZE;
+use crate::mm::PAGE_SIZE;
 use crate::proc::task::TaskTrapFrame;
 use crate::smp::HartFrameInfo;
 
@@ -56,7 +56,7 @@ const KERNEL_STACK_SIZE: usize = PAGE_SIZE - size_of::<usize>() - size_of::<Kern
 /// to the low addr).
 ///
 /// [`KernelTrapFrame`]: self::KernelTrapFrame
-/// [`PAGE_SIZE`]: crate::mm::page::PAGE_SIZE
+/// [`PAGE_SIZE`]: crate::mm::PAGE_SIZE
 #[repr(C)]
 pub struct KernelStack {
     _stack: [u8; KERNEL_STACK_SIZE],
