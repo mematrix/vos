@@ -1,6 +1,6 @@
 //! Handle traps in Supervisor mode.
 
-use crate::sc::TrapFrame;
+use crate::proc::task::TaskTrapFrame;
 use crate::smp::CpuInfo;
 
 
@@ -41,7 +41,7 @@ fn trap_from_s_mode(status: usize) -> bool {
 extern "C"
 fn handle_trap(
     epc: usize, val: usize, cause: usize, status: usize,
-    frame: &mut TrapFrame,
+    frame: &mut TaskTrapFrame,
     hart: &CpuInfo) -> usize {
     // The cause contains the type of trap (sync, async) as well as the cause number.
     // The most significant bit (aka `Interrupt bit`) is set if the trap was caused by an interrupt.

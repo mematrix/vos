@@ -34,38 +34,8 @@ mod trap;
 
 use core::mem::size_of;
 use crate::mm::page::PAGE_SIZE;
+use crate::proc::task::TaskTrapFrame;
 use crate::smp::TrapStackFrame;
-
-
-/// The trap frame is set into a structure and packed into each hart's `sscratch` register.
-/// This allows for quick reference and full context switch handling.
-/// To make offsets easier, everything will be a usize (8 bytes).
-///
-/// `kernel_stack` points to the [`KernelStack`] object start address.
-///
-/// [`KernelStack`]: self::KernelStack
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct TrapFrame {
-    // 0 - 255
-    pub regs: [usize; 32],
-    // 256 - 511
-    pub fregs: [usize; 32],
-    // 512
-    pub pc: usize,
-    // 520
-    pub cpu_stack: *const TrapStackFrame,
-    // 528
-    pub kernel_stack: *mut KernelStack,
-    // 536
-    pub satp: usize,
-    // 544
-    pub qm: usize,
-    // 552
-    pub pid: usize,
-    // 560
-    pub mode: usize,
-}
 
 /// Kernel stack context frame. Used when interrupt is enabled while handling the `ecall`
 /// sys-call to support single level recursive interrupt.
@@ -104,7 +74,7 @@ pub struct KernelStackFrame {
     // 520
     pub cpu_stack: *const TrapStackFrame,
     // 528
-    pub user_frame: *mut TrapFrame,
+    pub user_frame: *mut TaskTrapFrame,
 }
 
 const KERNEL_STACK_SIZE: usize = PAGE_SIZE - size_of::<usize>() - size_of::<KernelStackFrame>();
