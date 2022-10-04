@@ -2,10 +2,11 @@
 //! is also known as `thread`).
 
 use core::ptr::addr_of_mut;
-use crate::sc::{KernelStack};
+use crate::proc::kernel_stack::KernelStack;
 use crate::smp::TrapStackFrame;
 
 
+/// Task struct.
 #[repr(C)]
 pub struct TaskInfo {
     frame: TaskTrapFrame,
@@ -68,7 +69,7 @@ impl TaskInfo {
 /// object start address. If the task is a kernel thread, then `kernel_stack` points to the
 /// stack memory used by the kernel thread (currently the stack size is 4 pages which is 16KiB).
 ///
-/// [`KernelStack`]: self::KernelStack
+/// [`KernelStack`]: crate::proc::kernel::KernelStack
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct TaskTrapFrame {
