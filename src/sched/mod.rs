@@ -15,19 +15,84 @@
 //! simplify the asm code, the `cpu_stack` will point to the [`HartFrameInfo`] object which
 //! is the inner object of the [`HartTrapStack`].
 //!
-//! The context registers:
+//! # Context Registers:
 //!
 //! | Registers | Description |
 //! | :-------: | ----------- |
 //! | `x0`~`x31` | Generic registers. Note that `x0` is read-only constant zero. |
-//! | `f0`~`f31` | Generic floating registers. More see **`*1*`** |
+//! | `f0`~`f31` | Generic floating registers. See [Context Status] |
 //! | `pc` | The instruction counter register. |
 //!
-//! > **`*1*`**: Note: The floating register need to be saved only when the `sstatus->FS`
-//! field's value is 3.
+//! # Context Status
 //!
+//! RISC-V has several extension **context status** field in the `sstatus` register: `FS[1:0]`,
+//! `VS[1:0]`, and `XS[1:0]`. These fields are used to reduce the cost of context save and
+//! restore by setting and tracking the current state of the floating-point unit and any other
+//! user-mode extensions respectively.
+//!
+//! The `FS`, `VS`, and `XS` fields use the same status encoding as shown in following table,
+//! with the four possible status values being `Off`, `Initial`, `Clean`, and `Dirty`.
+//!
+//! | Status | `FS` and `VS` Meaning | `XS` Meaning |
+//! | :----: | --------------------- | ------------ |
+//! | 0 | Off | All off |
+//! | 1 | Initial | None dirty or clean, some on |
+//! | 2 | Clean | None dirty, some clean |
+//! | 3 | Dirty | Some dirty |
+//!
+//! See the RISC-V Privileged Spec Chapter 3.1.6.6 to get more detailed information.
+//!
+//! During a context save, we need only write out the corresponding state if its status is
+//! `Dirty`, and can then reset the extension's status to `Clean`.
+//!
+//! > A context save will happen on the time of a trap occurs or a thread gives up the CPU time
+//! slice with the schedule API call. If a user process thread gives up the CPU time slice, a
+//! trap will occur due to the sys-call; but if a kernel thread gives up the CPU time slice, no
+//! traps occur so we need do context save on the schedule API.
+//!
+//! During a context restore, the context need only be loaded from memory if the status is
+//! `Clean` (it should never be `Dirty` at restore). If the status is `Initial`, the context
+//! must be set to an initial constant value on context restore to avoid a security hole, but
+//! this can be done without accessing memory.
+//!
+//! > A context restore will happen on the time of a trap handler returns or a thread is selected
+//! to be scheduled. **Context restore on a trap handler** has a little difference: we only need
+//! restore the context if the status is `Dirty` (not `Clean`) which means the trap handler
+//! modifies the corresponding state so we need to restore it; If a context switching occurs (for
+//! example in the timer interrupt), the trap handler context restore code will never be executed.
+//! >
+//! > Currently we do not set an extension's status to `Initial` except for the boot time, so we
+//! do not handle the `Initial` status on a context restore.
+//!
+//! ## Floating registers status
+//!
+//! The `FS` field encodes the status of the floating-point unit state, including the
+//! floating-point registers `f0`–`f31` and the CSRs `fcsr`, `frm`, and `fflags`.
+//!
+//! The `FS` field is set to `Initial` on boot to enable the floating-point instructions.
+//!
+//! [Context Status]: #context-status
 //! [`TaskTrapFrame`]: crate::proc::task::TaskTrapFrame
 //! [`HartTrapStack`]: crate::smp::HartTrapStack
 //! [`HartFrameInfo`]: crate::smp::HartFrameInfo
 
 mod trap;
+
+
+/// Init scheduler service.
+///
+/// 1. Setup the idle thread.
+/// 2. Set `sstatus->sPIE` to 1 so that interrupt is enabled after the `sret` instruction in
+/// the `switch_to_task` function.
+pub(crate) fn init() {
+    //
+}
+
+/// Schedule a task on current CPU.
+///
+/// 1. Select a task of user process thread or kernel thread.
+/// 2. Set the `sstatus->sPP` to correspond the select task type.
+/// 3. Set timer event to next context switching time.
+/// 4. Call `switch_to_task` to restore context and switch to the selected task.
+pub(crate) fn schedule() /* -> ! */ {
+}
