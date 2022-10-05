@@ -77,11 +77,12 @@ _start:
     # Now set the S-mode CSRs.
 
     # Setting `sstatus` (supervisor status) register:
+    # 1 << 13 : FS[1:0] flag set to 1 (0b01, Initial status).
     # 1 << 8  : Supervisor's previous protection mode is 1 (SPP=1 [Supervisor]).
     # 1 << 5  : Supervisor's previous interrupt-enable bit is 0 (SPIE=0 [Disabled]).
     # 1 << 1  : Supervisor's interrupt-enable bit will be set to SPIE after sret.
     # We will turn on the interrupts after enter the kernel.
-    li t0, (1 << 8)
+    li t0, (1 << 8) | (0b01 << 13)
     csrw sstatus, t0
     # The kmain Rust fn will run in S-mode.
     la t1, kmain

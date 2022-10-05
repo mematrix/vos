@@ -66,6 +66,11 @@ asm_trap_handler:
         save_fp %i, t5
         .set i, i+1
     .endr
+    # Then set the FS status to Clean. FS flag is in sstatus[14:13]
+    # Note currently the FS=0b11, and Clean status is 0b10, so we just need to clear bit 13.
+    li t2, 0x2000
+    csrrc x0, sstatus, t2
+
 1:
     # Get ready to go into Rust (sched/trap.rs).
     csrr a0, sepc
@@ -96,6 +101,7 @@ asm_trap_handler:
     csrr t1, sstatus
     srli t0, t1, 13
     andi t0, t0, 3
+    # If FS status became Dirty after returning from trap handler, then we need to restore fregs.
     li t3, 3
     bne t0, t3, 2f
     .set i, 0
@@ -103,6 +109,10 @@ asm_trap_handler:
         load_fp %i
         .set i, i+1
     .endr
+    # Again, set the FS status to Clean from Drity.
+    li t2, 0x2000
+    csrrc x0, sstatus, t2
+
 2:
     # Restore all GP registers
     .set i, 1
