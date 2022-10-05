@@ -77,6 +77,10 @@
 //! [`HartFrameInfo`]: crate::smp::HartFrameInfo
 
 mod trap;
+mod scheduler;
+
+// Re-export all.
+pub use scheduler::*;
 
 
 /// Init scheduler service.
@@ -85,7 +89,8 @@ mod trap;
 /// 2. Set `sstatus->sPIE` to 1 so that interrupt is enabled after the `sret` instruction in
 /// the `switch_to_task` function.
 pub(crate) fn init() {
-    //
+    // Init scheduler, set the idle task.
+    init_and_set_idle_task();
 }
 
 /// Schedule a task on current CPU.
