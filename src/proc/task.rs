@@ -4,13 +4,40 @@
 use core::ptr::addr_of_mut;
 use crate::proc::kernel_stack::KernelStack;
 use crate::smp::HartFrameInfo;
+use crate::util::list::List;
 
+
+/// Status of a task.
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum TaskStatus {
+    /// Task is ready to run.
+    Ready = 0,
+    /// Task is currently running on the CPU.
+    Running = 1,
+    /// Interruptible sleeping status. Can be wakeup by signal.
+    InterruptibleSleep = 2,
+    /// Uninterruptible sleeping status. Any async signal are ignored.
+    UninterruptibleSleep = 3,
+    /// Task dead, destroy all resource except for the `TaskInfo` struct.
+    DeadZombie = 4,
+    /// Task dead, destroy all resource including the `TaskInfo` struct.
+    Dead = 5,
+}
+
+impl TaskStatus {
+    pub const fn val(self) -> u32 {
+        self as u32
+    }
+}
 
 /// Task struct.
 #[repr(C)]
 pub struct TaskInfo {
     frame: TaskTrapFrame,
+    pub(crate) list: List,
     tid: u32,
+    status: TaskStatus,
     // Process info
     /// Thread exit code.
     exit_code: usize
@@ -27,6 +54,18 @@ impl TaskInfo {
     #[inline(always)]
     pub fn set_tid(&mut self, tid: u32) {
         self.tid = tid;
+    }
+
+    /// Get the task status.
+    #[inline(always)]
+    pub fn status(&self) -> TaskStatus {
+        self.status
+    }
+
+    /// Set task status.
+    #[inline(always)]
+    pub fn set_status(&mut self, status: TaskStatus) {
+        self.status = status;
     }
 
     /// Get thread exit code.
