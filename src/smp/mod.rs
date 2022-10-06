@@ -6,6 +6,7 @@ mod cpu_stack;
 
 pub use cpu_info::CpuInfo;
 pub use cpu_stack::*;
+pub use per_cpu::PerCpuPtr;
 
 
 /// SMP CPU count.
