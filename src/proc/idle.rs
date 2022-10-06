@@ -1,27 +1,24 @@
 //! Idle kernel thread. Whenever a hart is free, this idle thread will be scheduled.
 
-use core::mem::zeroed;
+use core::ptr::null_mut;
 use crate::arch::cpu;
+use crate::proc::kernel::{build_kernel_thread_on_place, ctx};
 use crate::proc::task::TaskInfo;
-use crate::smp::{CpuInfo, current_cpu_frame};
 
 
-pub fn create_idle_thread() -> TaskInfo {
-    // todo: alloc `TaskInfo` from kmem.
-    let mut task: TaskInfo = unsafe { zeroed() };
-    let frame = task.trap_frame_mut();
-    frame.cpu_stack = current_cpu_frame();
-
-    task
+pub fn build_idle_thread(task: *mut TaskInfo) {
+    unsafe {
+        // We dropped the return ptr value, as it is the same as `task` and not used.
+        let _ = build_kernel_thread_on_place(idle_work, null_mut(), task).build();
+    }
 }
 
 extern "C"
-fn idle_work(data: *mut ()) -> usize {
+fn idle_work(_data: *mut ()) -> usize {
     let cur_cpu = unsafe {
-        let self_task = data as *const TaskInfo;
-        let cpu_stack = (*self_task).trap_frame().cpu_stack;
-        let info = (*cpu_stack).tp as *const CpuInfo;
-        &*info
+        // SAFETY: Idle task will always run on the same hart, so the current CPU info ptr
+        // will never change even after the context switch.
+        ctx::this_cpu_info()
     };
 
     let mut time = cpu::read_time();
