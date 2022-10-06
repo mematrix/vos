@@ -11,9 +11,19 @@ use crate::proc::task::{TaskInfo, TaskType};
 pub type ThreadEntry = extern "C" fn(*mut ()) -> usize;
 
 /// Build a kernel thread object.
+#[must_use]
 pub fn build_kernel_thread(entry: ThreadEntry, user_data: *mut ()) -> ThreadBuilder {
     // todo: use Result?
     ThreadBuilder::new(entry, user_data).unwrap()
+}
+
+/// Construct a kernel thread object on the memory of `task_mem` ptr.
+///
+/// **SAFETY**: Caller must guard the `task_mem` ptr is valid.
+pub unsafe fn build_kernel_thread_on_place(
+    entry: ThreadEntry, user_data: *mut (), task_mem: *mut TaskInfo
+) -> ThreadBuilder {
+    ThreadBuilder::new_on_place(entry, user_data, task_mem).unwrap()
 }
 
 
@@ -25,22 +35,16 @@ pub struct ThreadBuilder {
 }
 
 impl ThreadBuilder {
-    pub fn new(entry: ThreadEntry, user_data: *mut ()) -> Option<Self> {
-        let ptr = kzalloc(size_of::<TaskInfo>(), 0);
-        if ptr.is_null() {
-            return None;
-        }
-
+    pub fn new_on_place(entry: ThreadEntry, user_data: *mut (), ptr: *mut TaskInfo) -> Option<Self> {
         // todo: use vmalloc to get a virtual address protection.
         // Kernel thread has a stack size of 2^2 pages, 16KiB.
         let stack = page::alloc_pages(0, 2);    // todo: const val = 2
         if stack == 0 {
-            kfree(ptr);
             return None;
         }
 
         let ret = Self {
-            task_info: unsafe { &mut *(ptr as *mut TaskInfo) },
+            task_info: unsafe { &mut *ptr },
         };
         ret.task_info.set_tid(KERNEL_TID.fetch_add(1, Ordering::AcqRel));
         ret.task_info.set_task_type(TaskType::Kernel);
@@ -65,6 +69,24 @@ impl ThreadBuilder {
         }
 
         Some(ret)
+    }
+
+    pub fn new(entry: ThreadEntry, user_data: *mut ()) -> Option<Self> {
+        let ptr = kzalloc(size_of::<TaskInfo>(), 0);
+        if ptr.is_null() {
+            return None;
+        }
+
+        let ret = Self::new_on_place(entry, user_data, ptr as _);
+        if ret.is_none() {
+            kfree(ptr);
+        }
+
+        ret
+    }
+
+    pub fn build(self) -> *mut TaskInfo {
+        self.task_info as _
     }
 }
 
