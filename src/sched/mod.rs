@@ -15,6 +15,10 @@
 //! simplify the asm code, the `cpu_stack` will point to the [`HartFrameInfo`] object which
 //! is the inner object of the [`HartTrapStack`].
 //!
+//! # API Usage
+//!
+//! **Note**: All scheduler APIs **must** be called on a **preempt-disabled** context.
+//!
 //! # Context Registers:
 //!
 //! | Registers | Description |
@@ -83,8 +87,8 @@ mod scheduler;
 pub use scheduler::*;
 
 use crate::arch::cpu;
-use crate::proc::task::TaskType;
-use crate::smp::{CpuInfo, current_cpu_frame, current_cpu_info};
+use crate::proc::task::{TaskStatus, TaskType};
+use crate::smp::{current_cpu_frame, current_cpu_info};
 
 
 /// Init scheduler service.
@@ -142,6 +146,7 @@ pub(crate) fn schedule() /* -> ! */ {
             task_ref.get_trap_frame_ptr() as usize
         }
     };
+    task_ref.set_status(TaskStatus::Running);
     unsafe {
         switch_to_task(trap_frame);
     }
