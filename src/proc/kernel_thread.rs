@@ -45,7 +45,7 @@ impl ThreadBuilder {
         ret.task_info.set_tid(KERNEL_TID.fetch_add(1, Ordering::AcqRel));
         ret.task_info.set_task_type(TaskType::Kernel);
 
-        let frame = ret.task_info.trap_frame();
+        let frame = ret.task_info.trap_frame_mut();
         // On kernel thread, the `kernel_stack` points to the stack memory.
         frame.kernel_stack = stack as _;
         frame.satp = get_satp_identity_map();

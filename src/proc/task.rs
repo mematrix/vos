@@ -177,9 +177,15 @@ impl TaskInfo {
         self.exit_code = exit_code;
     }
 
-    /// Get the trap frame object ref.
+    /// Get ref of the trap frame object.
     #[inline(always)]
-    pub fn trap_frame(&mut self) -> &mut TaskTrapFrame {
+    pub fn trap_frame(&self) -> &TaskTrapFrame {
+        &self.frame
+    }
+
+    /// Get mut ref of the trap frame object.
+    #[inline(always)]
+    pub fn trap_frame_mut(&mut self) -> &mut TaskTrapFrame {
         &mut self.frame
     }
 
