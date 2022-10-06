@@ -84,7 +84,7 @@ pub use scheduler::*;
 
 use crate::arch::cpu;
 use crate::proc::task::TaskType;
-use crate::smp::CpuInfo;
+use crate::smp::{CpuInfo, current_cpu_frame, current_cpu_info};
 
 
 /// Init scheduler service.
@@ -100,13 +100,13 @@ pub(crate) fn init() {
     cpu::sstatus_set_spie();
 }
 
-/// Schedule a task on current CPU. `cpu_info` **must** contains **current** CPU information.
+/// Schedule a task on current CPU.
 ///
 /// 1. Select a task of user process thread or kernel thread.
 /// 2. Set the `sstatus->sPP` to correspond the select task type.
 /// 3. Set timer event to next context switching time.
 /// 4. Call `switch_to_task` to restore context and switch to the selected task.
-pub(crate) fn schedule(cpu_info: &CpuInfo) /* -> ! */ {
+pub(crate) fn schedule() /* -> ! */ {
     let task = find_ready_task_or_idle();
     let task_ref = unsafe { &mut *task };
 
@@ -116,6 +116,7 @@ pub(crate) fn schedule(cpu_info: &CpuInfo) /* -> ! */ {
         cpu::sstatus_clear_bits(cpu::SSTATUS_SPP_BIT);
     }
 
+    let cpu_info = current_cpu_info();
     cpu::stimecmp_write_delta(if task_ref.is_realtime_task() {
         cpu_info.get_time_slice_realtime()
     } else {
@@ -123,9 +124,17 @@ pub(crate) fn schedule(cpu_info: &CpuInfo) /* -> ! */ {
     });
 
     // Get the `TaskTrapFrame`.
+    let cpu_frame = current_cpu_frame();
+    task_ref.trap_frame_mut().cpu_stack = cpu_frame;
     let trap_frame = if task_ref.task_type() == TaskType::Kernel {
         task_ref.get_trap_frame_ptr() as usize
     } else {
+        // Set cpu_stack on both user trap frame and kernel trap frame.
+        let kernel_stack = task_ref.trap_frame_mut().kernel_stack;
+        unsafe {
+            (*kernel_stack).cpu_stack = cpu_frame;
+        }
+
         // User thread trap in kernel mode, restore the kernel stack context.
         if task_ref.is_user_in_kernel_mode() {
             task_ref.trap_frame().kernel_stack as usize

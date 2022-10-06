@@ -180,19 +180,16 @@ fn kmain() {
     show_offset_test!(COffsetPackedTest);
     show_offset_test!(COffsetAlignTest);
 
-    // Create the first kernel thread: idle process with PID=0.
-    let mut idle_task = proc::create_idle_kernel_thread();
-    let frame = idle_task.get_trap_frame_ptr();
-    arch::cpu::sscratch_write(frame as _);
+    // Create the first kernel thread: idle process with TID=0 (All kernel thread has a PID of 0).
+    proc::init();
+    sched::init();
     // Create the first user process: systemd process with PID=1. All other processes will
     // be forked from this.
 
     // Do schedule: We need first select a thread to run, write its `TrapFrame` into the
     // `sscratch` CSR, then set the next timer event and open the interrupt flag.
-    // Set timer.
-    arch::cpu::stimecmp_write_delta(10_000_000);    // 1s
-    // Enable interrupt.
-    arch::cpu::sstatus_sti();
+    sched::schedule();
+    // The `schedule` will never return.
 
     println_k!("Start typing, I'll show what you typed!");
     let uart = driver::uart::Uart::default();

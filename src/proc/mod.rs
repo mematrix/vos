@@ -10,15 +10,10 @@ pub(crate) mod kernel {
     // Re-export on `kernel` mod.
     pub use super::kernel_thread::*;
     pub use super::kernel_stack::*;
+    pub use super::idle::create_idle_thread;
 }
-
-use crate::proc::task::TaskInfo;
 
 
 pub fn init() {
     //
-}
-
-pub fn create_idle_kernel_thread() -> TaskInfo {
-    idle::build_idle_task_info()
 }
