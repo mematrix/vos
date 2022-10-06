@@ -4,7 +4,7 @@ use core::mem::size_of;
 use core::sync::atomic::{AtomicU32, Ordering};
 use crate::arch::cpu::{self, Register};
 use crate::mm::{page, kfree, kzalloc, get_satp_identity_map, PAGE_SIZE};
-use crate::proc::task::TaskInfo;
+use crate::proc::task::{TaskInfo, TaskType};
 
 
 /// Kernel thread entry function signature.
@@ -43,6 +43,8 @@ impl ThreadBuilder {
             task_info: unsafe { &mut *(ptr as *mut TaskInfo) },
         };
         ret.task_info.set_tid(KERNEL_TID.fetch_add(1, Ordering::AcqRel));
+        ret.task_info.set_task_type(TaskType::Kernel);
+
         let frame = ret.task_info.trap_frame();
         // On kernel thread, the `kernel_stack` points to the stack memory.
         frame.kernel_stack = stack as _;
@@ -58,7 +60,6 @@ impl ThreadBuilder {
             *regs.get_unchecked_mut(cpu::reg(Register::A1)) = user_data as _;
             *regs.get_unchecked_mut(cpu::reg(Register::A2)) = ptr as _;
             // Set thread stack. Stack is growing from high to low address.
-            // todo: ::constant::PAGE_SIZE definition
             let top = stack + PAGE_SIZE * (1usize << 2) - size_of::<usize>();
             *regs.get_unchecked_mut(cpu::reg(Register::Sp)) = top;
         }
