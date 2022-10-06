@@ -2,6 +2,7 @@ mod boot_asm;
 mod m_trap_asm;
 mod trap_asm;
 mod mem_asm;
+mod sched_asm;
 
 pub(crate) mod mem_v {
     extern "C" {

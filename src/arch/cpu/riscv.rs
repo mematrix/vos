@@ -90,6 +90,12 @@ pub const fn freg(r: FRegister) -> usize {
     r as usize
 }
 
+////////////////////// CSR bits flag //////////////////////
+
+/// `SPP` bit in `sstatus` register. The `sret` instruction will set the privilege level to
+/// supervisor mode if `SPP` bit is 1, or user mode if `SPP` bit is 0.
+pub const SSTATUS_SPP_BIT: usize = 1usize << 8;
+
 ////////////////////// Registers R/W //////////////////////
 
 /// Read the `tp` register value.
@@ -141,7 +147,10 @@ pub fn sstatus_write(val: usize) {
     }
 }
 
-/// Clear `SIE` bit of the `sstatus` register, return the **old** `sstatus` reg value. To restore the
+// `SIE` and `SPIE` bit are in the least 5 bits of `sstatus`, so we write the bits by single `csrrci`
+// and `csrrsi` instructions. For other bits, we need a register value to clear and set the bits.
+
+/// Clear the `SIE` of the `sstatus` register, return the **old** `sstatus` reg value. To restore the
 /// old interrupt status, if no other operations changed the `sstatus` value, call [`sstatus_write`]
 /// with the returned value.
 ///
@@ -155,13 +164,45 @@ pub fn sstatus_cli() -> usize {
     }
 }
 
-/// Set `SIE` bit of the `sstatus` register. Not like the [`sstatus_cli`], this function does not
+/// Set the `SIE` bit of `sstatus` register. Not like the [`sstatus_cli`], this function does not
 /// return the old `sstatus` reg value.
 ///
 /// [`sstatus_cli`]: self::sstatus_cli
 pub fn sstatus_sti() {
     unsafe {
         asm!("csrrsi x0, sstatus, 0b0010");
+    }
+}
+
+/// Set the `SPIE` bit of `sstatus` register.
+pub fn sstatus_set_spie() {
+    unsafe {
+        asm!("csrrsi x0, sstatus, 0b10000");
+    }
+}
+
+// Clear the `SPIE` bit of `sstatus` register.
+// pub fn sstatus_clear_spie() {
+//     unsafe {
+//         asm!("csrrci x0, sstatus, 0b10000");
+//     }
+// }
+
+/// Set the bits of the `sstatus` register if the corresponding bits in `enable_bits` is 1.
+///
+/// See RISC-V CSR instruction `csrrs`.
+pub fn sstatus_set_bits(enable_bits: usize) {
+    unsafe {
+        asm!("csrrs x0, sstatus, {}", in(reg) enable_bits);
+    }
+}
+
+/// Clear the bits of the `sstatus` register if the corresponding bits in `clear_bits` is 1.
+///
+/// See RISC-V CSR instruction `csrrc`.
+pub fn sstatus_clear_bits(clear_bits: usize) {
+    unsafe {
+        asm!("csrrc x0, sstatus, {}", in(reg) clear_bits);
     }
 }
 

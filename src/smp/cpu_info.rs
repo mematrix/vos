@@ -52,10 +52,16 @@ impl CpuInfo {
         self.timebase_freq
     }
 
-    /// Get the interval time (in CPU clocks) performing the context switching.
+    /// Get the interval time clocks performing the context switching for **normal** task.
     #[inline(always)]
-    pub fn get_ctx_switch_interval(&self) -> usize {
-        self.timebase_freq / 64usize
+    pub fn get_time_slice_normal(&self) -> usize {
+        self.timebase_freq / TIME_SLICE_OF_NORMAL
+    }
+
+    /// Get the interval time clocks performing the context switching for **realtime** task.
+    #[inline(always)]
+    pub fn get_time_slice_realtime(&self) -> usize {
+        self.timebase_freq / TIME_SLICE_OF_REALTIME
     }
 
     #[inline(always)]
