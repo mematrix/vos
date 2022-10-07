@@ -5,6 +5,7 @@ mod idle;
 mod kernel_context;
 mod kernel_stack;
 mod kernel_thread;
+mod kernel_test;
 
 /// Kernel stack and kernel thread structs and functions definition. This mod should only be
 /// used on the kernel thread task.
@@ -19,6 +20,8 @@ pub(crate) mod kernel {
         pub use crate::proc::kernel_context::*;
     }
 }
+
+pub use kernel_test::add_test_kernel_threads;
 
 
 pub fn init() {
