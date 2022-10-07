@@ -1,6 +1,7 @@
 //! Handle traps in Supervisor mode.
 
-use crate::proc::task::TaskTrapFrame;
+use crate::proc::task::{TaskInfo, TaskTrapFrame};
+use crate::sched::{ready_list_add_task, schedule};
 use crate::smp::CpuInfo;
 
 
@@ -61,8 +62,13 @@ fn handle_trap(
                 // Supervisor timer interrupt.
                 // Do context switching.
                 trace!("Supervisor timer interrupt on hart #{}", hart.get_hart_id());
-                // Update next time event.
-                crate::arch::cpu::stimecmp_write_delta(10_000_000);
+                // Get the task struct from TrapFrame. Add current task to ready list.
+                let task = unsafe { TaskInfo::from_trap_frame_ptr(frame as _) };
+                ready_list_add_task(task);
+
+                // Then schedule next task. This will never return.
+                // todo: add quick context switch if there is no other ready task but this task.
+                schedule();
             }
             9 => {
                 // Supervisor external interrupt.

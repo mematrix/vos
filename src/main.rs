@@ -183,6 +183,10 @@ fn kmain() {
     // Create the first kernel thread: idle process with TID=0 (All kernel thread has a PID of 0).
     proc::init();
     sched::init();
+
+    // Add the kernel test threads.
+    proc::add_test_kernel_threads();
+
     // Create the first user process: systemd process with PID=1. All other processes will
     // be forked from this.
 
@@ -190,30 +194,4 @@ fn kmain() {
     // `sscratch` CSR, then set the next timer event and open the interrupt flag.
     sched::schedule();
     // The `schedule` will never return.
-
-    println_k!("Start typing, I'll show what you typed!");
-    let uart = driver::uart::Uart::default();
-
-    loop {
-        if let Some(c) = uart.get() {
-            match c {
-                // 8 => {
-                //     // This is a backspace, so we essentially have
-                //     // to write a space and backup again:
-                //     print_k!("{}{}{}", 8 as char, ' ', 8 as char);
-                // },
-                10 | 13 => {
-                    // Newline or carriage-return
-                    println_k!();
-                }
-                _ => {
-                    print_k!("{}", (c as char).escape_default());
-                }
-            }
-        } else {
-            // unsafe {
-            //     asm!("wfi");
-            // }
-        }
-    }
 }
