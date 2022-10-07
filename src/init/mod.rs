@@ -8,8 +8,7 @@ use core::ptr::{copy_nonoverlapping, null, slice_from_raw_parts};
 use fdt::standard_nodes::Memory;
 use crate::asm::mem_v::KERNEL_TABLE;
 use crate::driver::of;
-use crate::mm;
-use crate::smp;
+use crate::{logk, mm, smp};
 use crate::util::align;
 
 
@@ -94,6 +93,9 @@ pub fn kernel_setup() {
     let fdt = unsafe { of::fdt::parse_from_ptr::<'static>(DEVICE_TREE_BLOB) };
     let chosen = fdt.chosen();
     early_init::dt_scan_chosen(&chosen);
+
+    // After this init, we can use the `log` crate macros for logging.
+    logk::init();
 
     let memory = fdt.memory();
     let reg_count = memory.regions().count();
