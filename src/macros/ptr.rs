@@ -1,5 +1,9 @@
 //! Define some macros like the C `offsetof`, `container_of` macros. The implementation refers
 //! to the [Zhihu article](https://zhuanlan.zhihu.com/p/526894770).
+//!
+//! The macros for volatile read/write on a variable are also provided by this mod, the macros
+//! work like `READ_ONCE`/`WRITE_ONCE` in the Linux.
+
 
 /// The macro `offset_of` expands to an integral constant expression of type `usize`, the value
 /// of which is the offset, in bytes, from the beginning of an object of specified type to its
@@ -78,4 +82,24 @@ macro_rules! container_of_mut {
         let ptr: *mut _ = $ptr;
         ptr.cast::<u8>().sub(offset_of!($ty, $field)).cast::<$ty>()
     }};
+}
+
+/// Perform a volatile read on the variable (not pointer).
+#[macro_export]
+macro_rules! read_once {
+    ($place:expr) => {
+        unsafe {
+            ::core::ptr::addr_of!($place).read_volatile()
+        }
+    };
+}
+
+/// Perform a volatile write on the variable (not pointer).
+#[macro_export]
+macro_rules! write_once {
+    ($place:expr, $v:expr) => {
+        unsafe {
+            ::core::ptr::addr_of_mut!($place).write_volatile($v);
+        }
+    };
 }
