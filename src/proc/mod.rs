@@ -8,7 +8,7 @@ mod kernel_thread;
 mod kernel_test;
 
 /// Kernel stack and kernel thread structs and functions definition. This mod should only be
-/// used on the kernel thread task.
+/// used on the kernel thread task or a task trapped in kernel mode.
 pub(crate) mod kernel {
     // Re-export on `kernel` mod.
     pub use super::kernel_thread::*;
