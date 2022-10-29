@@ -2,6 +2,7 @@
 #![no_std]
 #![feature(default_alloc_error_handler)]    // GlobalAllocator need this.
 #![feature(inline_const)]   // Needed in 'macros/ptr.rs'.
+#![feature(generic_const_exprs)]    // Using generate type parameters in const expressions
 #![feature(const_refs_to_cell)]     // An negative error reported by v1.66.0-nightly
 
 #[macro_use]
@@ -12,8 +13,10 @@ extern crate alloc;
 mod asm;
 #[macro_use]
 mod macros;
-mod util;
 mod constant;
+mod util;
+
+pub use util::type_trait::*;
 
 mod arch;
 mod init;
