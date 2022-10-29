@@ -52,11 +52,37 @@ impl TaskType {
 }
 
 
+#[cfg(target_endian="big")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub(crate) struct PreemptCount {
+    pub need_resched: u32,
+    pub count: u32,
+}
+
+#[cfg(target_endian="little")]
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub(crate) struct PreemptCount {
+    pub count: u32,
+    pub need_resched: u32,
+}
+
+#[repr(C)]
+pub(crate) union PreemptUnion {
+    pub preempt_count: u64,
+    pub preempt: PreemptCount,
+}
+
 /// Task struct.
 #[repr(C)]
 pub struct TaskInfo {
     frame: TaskTrapFrame,
     pub(crate) list: List,
+    /// Preemption counter. Preemption is disabled if the `preempt_count` is not zero
+    /// (The most 2 bits are flags used for the scheduler: `PREEMPT_NEED_RESCHED` &
+    /// `SCHED_CUR_CPU`).
+    pub(crate) preempt_union: PreemptUnion,
     tid: u32,
     status: TaskStatus,
     /// Bits flag \[7:0].

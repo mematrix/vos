@@ -82,6 +82,7 @@
 
 mod trap;
 mod scheduler;
+mod preempt;
 
 // Re-export all.
 pub use scheduler::*;
@@ -154,4 +155,9 @@ pub(crate) fn schedule() /* -> ! */ {
 
 extern "C" {
     fn switch_to_task(trap_frame: usize) -> !;
+}
+
+/// Do preempt schedule on the current CPU.
+pub(crate) fn preempt_schedule() /* -> ! */ {
+    //
 }
