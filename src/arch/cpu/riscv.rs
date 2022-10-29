@@ -42,6 +42,7 @@ pub enum Register {
     T6,
 }
 
+#[inline(always)]
 pub const fn reg(r: Register) -> usize {
     r as usize
 }
@@ -86,6 +87,7 @@ pub enum FRegister {
     Ft11,
 }
 
+#[inline(always)]
 pub const fn freg(r: FRegister) -> usize {
     r as usize
 }
@@ -103,7 +105,7 @@ pub const SSTATUS_SPP_BIT: usize = 1usize << 8;
 macro_rules! read_tp {
     () => {{
         let tp: usize;
-        ::core::arch::asm!("mv {}, tp", out(reg) tp);
+        ::core::arch::asm!("mv {}, tp", out(reg) tp, options(pure, nomem, nostack));
         tp
     }};
 }
@@ -113,7 +115,7 @@ macro_rules! read_tp {
 macro_rules! write_tp {
     ($tp:expr) => {{
         let val: usize = $tp;
-        ::core::arch::asm!("mv tp, {}", in(reg) val);
+        ::core::arch::asm!("mv tp, {}", in(reg) val, options(nomem, nostack));
     }};
 }
 
@@ -121,10 +123,11 @@ macro_rules! write_tp {
 
 //////////////////// Machine CSRs R/W /////////////////////
 
+#[inline(always)]
 pub fn mhartid_read() -> usize {
     unsafe {
         let id;
-        asm!("csrr {}, mhartid", out(reg) id);
+        asm!("csrr {}, mhartid", out(reg) id, options(pure, nomem, nostack));
         id
     }
 }
@@ -132,18 +135,20 @@ pub fn mhartid_read() -> usize {
 ////////////////// Supervisor CSRs R/W ////////////////////
 
 /// Read `sstatus` register value.
+#[inline(always)]
 pub fn sstatus_read() -> usize {
     unsafe {
         let rval;
-        asm!("csrr {}, sstatus", out(reg) rval);
+        asm!("csrr {}, sstatus", out(reg) rval, options(pure, nomem, nostack));
         rval
     }
 }
 
 /// Write `val` to `sstatus` register.
+#[inline(always)]
 pub fn sstatus_write(val: usize) {
     unsafe {
-        asm!("csrw sstatus, {}", in(reg) val);
+        asm!("csrw sstatus, {}", in(reg) val, options(nomem, nostack));
     }
 }
 
@@ -155,11 +160,12 @@ pub fn sstatus_write(val: usize) {
 /// with the returned value.
 ///
 /// [`sstatus_write`]: self::sstatus_write
+#[inline(always)]
 pub fn sstatus_cli() -> usize {
     unsafe {
         let rd;
         // `sstatus` bit 1 -> sie
-        asm!("csrrci {}, sstatus, 0b0010", out(reg) rd);
+        asm!("csrrci {}, sstatus, 0b0010", out(reg) rd, options(pure, nomem, nostack));
         rd
     }
 }
@@ -168,16 +174,18 @@ pub fn sstatus_cli() -> usize {
 /// return the old `sstatus` reg value.
 ///
 /// [`sstatus_cli`]: self::sstatus_cli
+#[inline(always)]
 pub fn sstatus_sti() {
     unsafe {
-        asm!("csrrsi x0, sstatus, 0b0010");
+        asm!("csrrsi x0, sstatus, 0b0010", options(nomem, nostack));
     }
 }
 
 /// Set the `SPIE` bit of `sstatus` register.
+#[inline(always)]
 pub fn sstatus_set_spie() {
     unsafe {
-        asm!("csrrsi x0, sstatus, 0b10000");
+        asm!("csrrsi x0, sstatus, 0b10000", options(nomem, nostack));
     }
 }
 
@@ -191,88 +199,100 @@ pub fn sstatus_set_spie() {
 /// Set the bits of the `sstatus` register if the corresponding bits in `enable_bits` is 1.
 ///
 /// See RISC-V CSR instruction `csrrs`.
+#[inline(always)]
 pub fn sstatus_set_bits(enable_bits: usize) {
     unsafe {
-        asm!("csrrs x0, sstatus, {}", in(reg) enable_bits);
+        asm!("csrrs x0, sstatus, {}", in(reg) enable_bits, options(nomem, nostack));
     }
 }
 
 /// Clear the bits of the `sstatus` register if the corresponding bits in `clear_bits` is 1.
 ///
 /// See RISC-V CSR instruction `csrrc`.
+#[inline(always)]
 pub fn sstatus_clear_bits(clear_bits: usize) {
     unsafe {
-        asm!("csrrc x0, sstatus, {}", in(reg) clear_bits);
+        asm!("csrrc x0, sstatus, {}", in(reg) clear_bits, options(nomem, nostack));
     }
 }
 
+#[inline(always)]
 pub fn sie_read() -> usize {
     unsafe {
         let rval;
-        asm!("csrr {}, sie", out(reg) rval);
+        asm!("csrr {}, sie", out(reg) rval, options(pure, nomem, nostack));
         rval
     }
 }
 
+#[inline(always)]
 pub fn sie_write(val: usize) {
     unsafe {
-        asm!("csrw sie, {}", in(reg) val);
+        asm!("csrw sie, {}", in(reg) val, options(nomem, nostack));
     }
 }
 
+#[inline(always)]
 pub fn sscratch_read() -> usize {
     unsafe {
         let rval;
-        asm!("csrr {}, sscratch", out(reg) rval);
+        asm!("csrr {}, sscratch", out(reg) rval, options(pure, nomem, nostack));
         rval
     }
 }
 
+#[inline(always)]
 pub fn sscratch_write(val: usize) {
     unsafe {
-        asm!("csrw sscratch, {}", in(reg) val);
+        asm!("csrw sscratch, {}", in(reg) val, options(nomem, nostack));
     }
 }
 
 /// Write `to` to the `sscratch` register and return the old value of the register.
+#[inline(always)]
 pub fn sscratch_swap(to: usize) -> usize {
     unsafe {
         let from;
-        asm!("csrrw {}, sscratch, {}", lateout(reg) from, in(reg) to);
+        asm!("csrrw {}, sscratch, {}", lateout(reg) from, in(reg) to, options(pure, nomem, nostack));
         from
     }
 }
 
+#[inline(always)]
 pub fn sepc_read() -> usize {
     unsafe {
         let rval;
-        asm!("csrr {}, sepc", out(reg) rval);
+        asm!("csrr {}, sepc", out(reg) rval, options(pure, nomem, nostack));
         rval
     }
 }
 
+#[inline(always)]
 pub fn sepc_write(val: usize) {
     unsafe {
-        asm!("csrw sepc, {}", in(reg) val);
+        asm!("csrw sepc, {}", in(reg) val, options(nomem, nostack));
     }
 }
 
+#[inline(always)]
 pub fn satp_read() -> usize {
     unsafe {
         let rval;
-        asm!("csrr {}, satp", out(reg) rval);
+        asm!("csrr {}, satp", out(reg) rval, options(pure, nomem, nostack));
         rval
     }
 }
 
+#[inline(always)]
 pub fn satp_write(val: usize) {
     unsafe {
-        asm!("csrw satp, {}", in(reg) val);
+        asm!("csrw satp, {}", in(reg) val, options(nomem, nostack));
     }
 }
 
 /// Take a hammer to the page tables and synchronize all of them. This
 /// essentially flushes the entire TLB.
+#[inline(always)]
 pub fn satp_fense(vaddr: usize, asid: usize) {
     unsafe {
         asm!("sfence.vma {}, {}", in(reg) vaddr, in(reg) asid);
@@ -281,20 +301,23 @@ pub fn satp_fense(vaddr: usize, asid: usize) {
 
 /// Synchronize based on the address space identifier This allows us to
 /// fence a particular process rather than the entire TLB.
+#[inline(always)]
 pub fn satp_fense_asid(asid: usize) {
     unsafe {
-        asm!("sfence.vma zero, {}", in(reg) asid);
+        asm!("sfence.vma zero, {}", in(reg) asid, options(nomem, nostack));
     }
 }
 
 /// Write `time` to `stimecmp` register.
+#[inline(always)]
 pub fn stimecmp_write(time: usize) {
     unsafe {
-        asm!("csrw stimecmp, {}", in(reg) time);
+        asm!("csrw stimecmp, {}", in(reg) time, options(nomem, nostack));
     }
 }
 
 /// Read the `time` value, add with `delta`, then write the result to `stimecmp`.
+#[inline(always)]
 pub fn stimecmp_write_delta(delta: usize) {
     unsafe {
         asm!(
@@ -302,7 +325,8 @@ pub fn stimecmp_write_delta(delta: usize) {
             "add {tmp}, {tmp}, {delta}",
             "csrw stimecmp, {tmp}",
             delta = in(reg) delta,
-            tmp = out(reg) _
+            tmp = out(reg) _,
+            options(nomem, nostack)
         );
     }
 }
@@ -310,12 +334,30 @@ pub fn stimecmp_write_delta(delta: usize) {
 /////////////////// Performance Registers /////////////////
 
 /// Read `time` register value.
+#[inline(always)]
 pub fn read_time() -> usize {
     unsafe {
         let t;
-        asm!("rdtime {}", out(reg) t);
+        asm!("rdtime {}", out(reg) t, options(pure, nomem, nostack));
         t
     }
 }
 
 // todo: read the Supervisor shadow perf registers: time, cycle, etc.
+
+//////////////////// Other Instructions ///////////////////
+
+/// Generate a `fence` instruction. If no order option is set, make a full fence on device "io"
+/// and memory "rw".
+#[macro_export]
+macro_rules! fence {
+    () => {
+        fence!("iorw", "iorw");
+    };
+    ($p:expr, $s:expr) => {
+        unsafe {
+            // Add corresponding compiler fence call.
+            ::core::arch::asm!(concat!("fence ", $p, ", ", $s), options(nomem, nostack));
+        }
+    }
+}
