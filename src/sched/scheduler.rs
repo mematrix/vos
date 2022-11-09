@@ -1,4 +1,5 @@
-//! Handle scheduler request.
+//! Handle scheduler request. The preemption **must** be disabled when calling the methods in
+//! this mod.
 
 use crate::proc::kernel::build_idle_thread;
 use crate::proc::task::{TaskInfo, TaskStatus};
@@ -24,7 +25,7 @@ pub(super) fn find_ready_task_or_idle() -> *mut TaskInfo {
     let task_list = unsafe { &TASK_LIST };
 
     if list::is_empty(&task_list.ready_head) {
-        task_list.cpu_idle.get()
+        task_list.cpu_idle.get_raw()
     } else {
         unsafe {
             // Remove the first ready task from `ready_head`.
@@ -43,7 +44,7 @@ pub fn ready_list_add_task(task: *mut TaskInfo) {
     task_ref.set_status(TaskStatus::Ready);
 
     // Return if task is idle task.
-    let cpu_idle = unsafe { TASK_LIST.cpu_idle.get() };
+    let cpu_idle = unsafe { TASK_LIST.cpu_idle.get_raw() };
     if cpu_idle == task {
         return;
     }

@@ -3,6 +3,7 @@
 use core::mem::size_of;
 use core::ptr::{null_mut, slice_from_raw_parts_mut};
 use crate::mm::{kfree, kmalloc};
+use crate::sched::PreemptGuard;
 use crate::smp::current_cpu_info;
 use super::CPU_COUNT;
 
@@ -59,24 +60,34 @@ impl<T> PerCpuPtr<T> {
         }
     }
 
-    /// Get the data ptr of current cpu.
-    pub fn get(&self) -> *mut T {
+    /// Get the data ptr of current cpu. **This method must be called on the preemption-disabled
+    /// context**.
+    pub fn get_raw(&self) -> *mut T {
         let cur_cpu_id = current_cpu_info().get_cpu_id();
         unsafe {
             self.data_array.add(cur_cpu_id)
         }
     }
 
+    /// Get the data ptr of current cpu.
+    pub fn get(&self) -> PreemptGuard<*mut T> {
+        PreemptGuard::init_by(|| self.get_raw())
+    }
+
     /// Get the data ref of current cpu.
     #[inline(always)]
-    pub fn get_ref(&self) -> &T {
-        unsafe { &*self.get() }
+    pub fn get_ref(&self) -> PreemptGuard<&T> {
+        PreemptGuard::init_by(|| unsafe {
+            &*self.get_raw()
+        })
     }
 
     /// Get mut ref of data of current cpu.
     #[inline(always)]
-    pub fn get_ref_mut(&self) -> &mut T {
-        unsafe { &mut *self.get() }
+    pub fn get_ref_mut(&self) -> PreemptGuard<&mut T> {
+        PreemptGuard::init_by(|| unsafe {
+            &mut *self.get_raw()
+        })
     }
 
     /// Get all objects as an array. The array length is equal to `CPU_COUNT`.
