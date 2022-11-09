@@ -86,6 +86,7 @@ mod preempt;
 
 // Re-export all.
 pub use scheduler::*;
+pub use preempt::*;
 
 use crate::arch::cpu;
 use crate::proc::task::{TaskStatus, TaskType};

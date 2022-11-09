@@ -1,6 +1,14 @@
 //! Functions and macros for accessing and manipulating `preempt_count` (used for kernel
-//! preemption, interrupt count, etc.)
+//! preemption, interrupt count, etc.).
+//!
+//! The `preempt_count` exists in the task struct [`TaskInfo`], so any functions or macros
+//! in this mod **must** be called after the tasks have been start scheduling.
 
+use core::borrow::Borrow;
+use core::cmp::Ordering;
+use core::hash::{Hash, Hasher};
+use core::mem::forget;
+use core::ops::{Deref, DerefMut};
 use crate::arch::cpu;
 use crate::barrier;
 use crate::proc::kernel::ctx::{self_task_info, self_task_info_mut};
@@ -220,3 +228,119 @@ pub fn in_serving_softirq() -> bool { (softirq_count() & SOFTIRQ_OFFSET) != 0 }
 /// If we're in task context.
 #[inline(always)]
 pub fn in_task() -> bool { !(in_nmi() | in_hardirq() | in_serving_softirq()) }
+
+
+///////////////////// Helper Objects //////////////////////
+
+/// A simple wrapper that guards a value is accessed in the **preempt-disabled** context.
+pub struct PreemptGuard<T> {
+    value: T,
+}
+
+impl<T> PreemptGuard<T> {
+    /// Init the `PreemptGuard` object with an initialized value. **Note that the initializing
+    /// process of `value` that out of this method call may not be protected by disabling
+    /// the preemption.**
+    #[inline(always)]
+    pub fn new(value: T) -> Self {
+        preempt_disable();
+        Self {
+            value
+        }
+    }
+
+    /// Init the `PreemptGuard` object that the inner value is initialized with the supplier.
+    /// The supplier function is called in the **preempt-disabled** context.
+    #[inline(always)]
+    pub fn init_by<F>(f: F) -> Self
+        where F: FnOnce() -> T {
+        preempt_disable();
+        Self {
+            value: f(),
+        }
+    }
+
+    pub fn map<U, F>(self, f: F) -> PreemptGuard<U>
+        where F: FnOnce(&T) -> U {
+        let ret = PreemptGuard {
+            value: f(&self.value)
+        };
+        forget(self);
+        ret
+    }
+}
+
+impl<T> Borrow<T> for PreemptGuard<T> where T: Eq + Ord + Hash {
+    #[inline(always)]
+    fn borrow(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T: PartialEq> PartialEq for PreemptGuard<T> {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.value.eq(&other.value)
+    }
+}
+
+impl<T: Eq> Eq for PreemptGuard<T> {}
+
+impl<T: PartialOrd> PartialOrd for PreemptGuard<T> {
+    #[inline(always)]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
+}
+
+impl<T: Ord> Ord for PreemptGuard<T> {
+    #[inline(always)]
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.value.cmp(&other.value)
+    }
+}
+
+impl<T: Hash> Hash for PreemptGuard<T> {
+    #[inline(always)]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}
+
+impl<T> AsRef<T> for PreemptGuard<T> {
+    #[inline(always)]
+    fn as_ref(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T> AsMut<T> for PreemptGuard<T> {
+    #[inline(always)]
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+}
+
+impl<T> Deref for PreemptGuard<T> {
+    type Target = T;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<T> DerefMut for PreemptGuard<T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.value
+    }
+}
+
+impl<T> Drop for PreemptGuard<T> {
+    #[inline(always)]
+    fn drop(&mut self) {
+        // no sched?
+        preempt_enable();
+    }
+}
