@@ -8,6 +8,7 @@ use crate::smp::current_cpu_info;
 use super::CPU_COUNT;
 
 
+#[repr(C)]
 pub struct PerCpuPtr<T> {
     data_array: *mut T,
 }
@@ -18,7 +19,8 @@ impl<T> PerCpuPtr<T> {
     ///
     /// [`init`]: self::PerCpuPtr::init
     /// [`init_with_ptr`]: self::PerCpuPtr::init_with_ptr
-    pub const fn new_empty() -> Self {
+    #[inline(always)]
+    pub const fn null() -> Self {
         Self {
             data_array: null_mut()
         }
@@ -53,6 +55,7 @@ impl<T> PerCpuPtr<T> {
 
     /// Init the memory for each cpu. **This method can be called only after the initialization
     /// of the SLAB/SLUB allocator and `kmalloc` is available**.
+    #[inline]
     pub fn init(&mut self) {
         unsafe {
             let bytes = CPU_COUNT * size_of::<T>();
@@ -62,6 +65,7 @@ impl<T> PerCpuPtr<T> {
 
     /// Get the data ptr of current cpu. **This method must be called on the preemption-disabled
     /// context**.
+    #[inline]
     pub fn get_raw(&self) -> *mut T {
         let cur_cpu_id = current_cpu_info().get_cpu_id();
         unsafe {
@@ -70,6 +74,7 @@ impl<T> PerCpuPtr<T> {
     }
 
     /// Get the data ptr of current cpu.
+    #[inline(always)]
     pub fn get(&self) -> PreemptGuard<*mut T> {
         PreemptGuard::init_by(|| self.get_raw())
     }
@@ -105,6 +110,7 @@ impl<T> PerCpuPtr<T> {
     /// [`Self::new`]: self::PerCpuPtr::new
     /// [`init`]: self::PerCpuPtr::init
     /// [`new_with_ptr`]: self::PerCpuPtr::new_with_ptr
+    #[inline]
     pub fn destroy(this: &mut Self) {
         kfree(this.data_array as _);
         this.data_array = null_mut();

@@ -63,7 +63,7 @@ impl TaskList {
     pub const fn new() -> Self {
         Self {
             ready_head: List::new(),
-            cpu_idle: PerCpuPtr::new_empty()
+            cpu_idle: PerCpuPtr::null()
         }
     }
 }
