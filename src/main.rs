@@ -14,6 +14,7 @@ mod asm;
 #[macro_use]
 mod macros;
 mod constant;
+mod base;
 mod util;
 
 pub use util::type_trait::*;
