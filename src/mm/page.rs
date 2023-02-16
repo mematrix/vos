@@ -48,6 +48,30 @@ use crate::util::align::{align_down, align_up, get_order};
 use crate::util::list::{self, List};
 
 
+const MAX_FREE_AREA_ORDER: usize = 10;
+
+/// Max order used to alloc pages.
+pub const PAGE_ALLOC_MAX_ORDER: u32 = MAX_FREE_AREA_ORDER as u32;
+/// The order at which allocations are deemed costly to service.
+pub const PAGE_ALLOC_COSTLY_ORDER: u32 = 3;
+// todo: page order param use type u32
+
+/// Page alloc flags type.
+pub type GfpAllocFlag = u32;
+
+pub mod gfp {
+    use crate::mm::page::GfpAllocFlag;
+
+    pub const GFP_DMA: GfpAllocFlag = 1u32;
+    pub const GFP_DMA32: GfpAllocFlag = 1u32 << 2;
+    pub const GFP_COMPOUND: GfpAllocFlag = 1u32 << 18;
+    pub const GFP_RECLAIMABLE: GfpAllocFlag = 1u32 << 4;
+
+    pub const GFP_KERNEL: GfpAllocFlag = 0u32; // todo
+}
+
+// todo: remove `PageFlag`.
+
 /// Page flags definition.
 #[repr(u32)]
 #[derive(Copy, Clone)]
@@ -82,6 +106,9 @@ impl PageFlag {
 /// 8 bits can be used to store custom flags. See methods [`get_custom_flags`], [`set_custom_flags`]
 /// and [`replace_custom_flags`] for more info, note that though the param or return type is `u32`,
 /// only the least 8 bits is valid and used.
+///
+/// When the **page** is allocated, all instance methods are invalid except for the [`get_private`]
+/// and `flags` operation methods.
 ///
 /// [`get_private`]: self::Page::get_private
 /// [`get_private_size`]: self::Page::get_private_size
@@ -148,7 +175,7 @@ impl Page {
 
     /// Replace the custom flags. This will overwrite the total custom flags value.
     ///
-    /// **Note**: Only the least 16 bits of `flag` is used.
+    /// **Note**: Only the least 8 bits of `flag` is used.
     #[inline(always)]
     pub fn replace_custom_flags(&mut self, flag: u32) {
         self.flags = (self.flags & 0xff_ffffu32) | (flag << 24);
@@ -157,7 +184,7 @@ impl Page {
     /// Set the certain custom flags. If a bit of `flag` is 1, **set** the correspond custom flag bit;
     /// otherwise leave the correspond flag bit unchanged.
     ///
-    /// **Note**: Only the least 16 bits of `flag` is used.
+    /// **Note**: Only the least 8 bits of `flag` is used.
     #[inline(always)]
     pub fn set_custom_flags(&mut self, flag: u32) {
         self.flags |= flag << 24;
@@ -166,12 +193,13 @@ impl Page {
     /// Clear the certain custom flags. If a bit of `flag` is 1, then **clear** the correspond custom
     /// flag bit; otherwise leave the correspond flag bit unchanged.
     ///
-    /// **Note**: Only the least 16 bits of `flag` is used.
+    /// **Note**: Only the least 8 bits of `flag` is used.
     #[inline(always)]
     pub fn clear_custom_flags(&mut self, flag: u32) {
         self.flags &= !(flag << 24);
     }
 
+    // todo: zone ids uses 4bits.
     /// Set zone idx.
     #[inline(always)]
     fn set_zone_idx(&mut self, idx: usize) {
@@ -228,8 +256,6 @@ impl FreeArea {
         }
     }
 }
-
-const MAX_FREE_AREA_ORDER: usize = 10;
 
 #[repr(C)]
 struct Zone {
