@@ -1,3 +1,4 @@
+pub(crate) mod boot;
 pub(crate) mod of;
 pub(crate) mod uart;
 pub(crate) mod cpu;
