@@ -14,6 +14,7 @@ mod asm;
 #[macro_use]
 mod macros;
 mod constant;
+mod errno;
 mod base;
 mod util;
 
