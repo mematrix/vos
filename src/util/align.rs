@@ -2,6 +2,7 @@
 
 use core::mem::align_of;
 
+// todo: use generic type or macros
 
 /// Get the order of an alignment value. Which is the count of the trailing zero bits
 /// of the `alignment`.
@@ -9,7 +10,7 @@ use core::mem::align_of;
 /// **Note**: The `alignment` value **must** be a power of 2, otherwise the result is
 /// incorrect. Type align info can be retrieved by [`core::mem::align_of`].
 ///
-/// [`core::mem::align_of`]: ::core::mem::align_of
+/// [`core::mem::align_of`]: align_of
 #[inline(always)]
 pub const fn get_order(alignment: usize) -> usize {
     alignment.trailing_zeros() as usize
@@ -33,7 +34,7 @@ pub const fn align_up(val: usize, order: usize) -> usize {
 /// function aligns value by rounding down, it will simple set the least `order` bits
 /// to zero. So the returned value will always be **not greater than** the `val`.
 ///
-/// [`align_up`]: self::align_up
+/// [`align_up`]: align_up
 #[inline(always)]
 pub const fn align_down(val: usize, order: usize) -> usize {
     let o = (1usize << order) - 1;
@@ -44,7 +45,7 @@ pub const fn align_down(val: usize, order: usize) -> usize {
 ///
 /// This function always rounds up. See [`align_up`].
 ///
-/// [`align_up`]: self::align_up
+/// [`align_up`]: align_up
 #[inline(always)]
 pub const fn align_up_of<T>(val: usize) -> usize {
     // Type alignment is guaranteed be a power of 2.
@@ -56,9 +57,33 @@ pub const fn align_up_of<T>(val: usize) -> usize {
 ///
 /// This function always rounds down. See [`align_down`].
 ///
-/// [`align_down`]: self::align_down
+/// [`align_down`]: align_down
 #[inline(always)]
 pub const fn align_down_of<T>(val: usize) -> usize {
     let order = align_of::<T>().trailing_zeros();
     align_down(val, order as usize)
+}
+
+/// Rounds up **align** the `val` value by a special `align` alignment. See [`align_up`].
+///
+/// `align` **must** be a power of 2, see [`get_order`].
+///
+/// [`align_up`]: align_up
+/// [`get_order`]: get_order
+#[inline(always)]
+pub const fn align_up_by(val: usize, align: usize) -> usize {
+    let order = get_order(align);
+    align_up(val, order)
+}
+
+/// Rounds up **align** the `val` value by a special `align` alignment. See [`align_down`].
+///
+/// `align` **must** be a power of 2, see [`get_order`].
+///
+/// [`align_down`]: align_down
+/// [`get_order`]: get_order
+#[inline(always)]
+pub const fn align_down_by(val: usize, align: usize) -> usize {
+    let order = get_order(align);
+    align_down(val, order)
 }
