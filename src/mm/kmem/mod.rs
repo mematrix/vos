@@ -1,4 +1,11 @@
 //! Kernel memory management for sub-page level: malloc-like allocation system.
+//!
+//! The allocator APIs **must** be called within a task context (in other words, the `sscratch`
+//! register **must** contain a valid [`TaskTrapFrame`] pointer which is a part of the
+//! [`TaskInfo`] object).
+//!
+//! [`TaskTrapFrame`]: crate::proc::task::TaskTrapFrame
+//! [`TaskInfo`]: crate::proc::task::TaskInfo
 
 use core::{mem::size_of, ptr::null_mut};
 use crate::base::sync::SpinLockPure;
