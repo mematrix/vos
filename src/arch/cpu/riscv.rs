@@ -159,9 +159,9 @@ pub fn sstatus_write(val: usize) {
 /// old interrupt status, if no other operations changed the `sstatus` value, call [`sstatus_write`]
 /// with the returned value.
 ///
-/// [`sstatus_write`]: self::sstatus_write
+/// [`sstatus_write`]: sstatus_write
 #[inline(always)]
-pub fn sstatus_cli() -> usize {
+pub fn sstatus_cli_save() -> usize {
     unsafe {
         let rd;
         // `sstatus` bit 1 -> sie
@@ -170,10 +170,21 @@ pub fn sstatus_cli() -> usize {
     }
 }
 
-/// Set the `SIE` bit of `sstatus` register. Not like the [`sstatus_cli`], this function does not
-/// return the old `sstatus` reg value.
+/// Clear the `SIE` of the `sstatus` register. No value returned by this function, to get the **old**
+/// `sstatus` reg value while clear the irq bit, use [`sstatus_cli_save`] instead.
 ///
-/// [`sstatus_cli`]: self::sstatus_cli
+/// [`sstatus_cli_save`]: sstatus_cli_save
+#[inline(always)]
+pub fn sstatus_cli() {
+    unsafe {
+        asm!("csrrci x0, sstatus, 0b0010", options(nomem, nostack));
+    }
+}
+
+/// Set the `SIE` bit of `sstatus` register. Like the [`sstatus_cli`], this function does not return
+/// the old `sstatus` reg value.
+///
+/// [`sstatus_cli`]: sstatus_cli
 #[inline(always)]
 pub fn sstatus_sti() {
     unsafe {
@@ -344,6 +355,20 @@ pub fn read_time() -> usize {
 }
 
 // todo: read the Supervisor shadow perf registers: time, cycle, etc.
+
+//////////////////// Associated Functions /////////////////
+
+/// Test if the irq is disabled with the `flags`.
+#[inline(always)]
+pub fn check_irq_disabled_flags(flags: usize) -> bool {
+    (flags & 0b0010usize) == 0
+}
+
+/// If the IRQ is disabled, return `true`, otherwise return `false`.
+#[inline(always)]
+pub fn is_irq_disabled() -> bool {
+    check_irq_disabled_flags(sstatus_read())
+}
 
 //////////////////// Other Instructions ///////////////////
 
