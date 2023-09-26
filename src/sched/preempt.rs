@@ -256,14 +256,34 @@ impl<T> PreemptGuard<T> {
         where F: FnOnce() -> T {
         preempt_disable();
         Self {
-            value: f(),
+            value: f()
         }
     }
 
+    /// Enable the preemption, and run the `task`, then disable the preemption.
+    #[inline]
+    pub fn yield_and_run<F>(&self, task: F) where F: FnOnce() {
+        preempt_enable();
+        task();
+        preempt_disable();
+    }
+
+    /// Update the inner value by calling the `provider`.
+    #[inline(always)]
+    pub fn update<F>(&mut self, provider: F) where F: FnOnce() -> T {
+        self.value = provider();
+    }
+
+    /// Update the inner value.
+    #[inline(always)]
+    pub fn update_with_value(&mut self, value: T) {
+        self.value = value;
+    }
+
     pub fn map<U, F>(self, f: F) -> PreemptGuard<U>
-        where F: FnOnce(&T) -> U {
+        where F: FnOnce(T) -> U, T: Copy {
         let ret = PreemptGuard {
-            value: f(&self.value)
+            value: f(self.value)
         };
         forget(self);
         ret
@@ -337,7 +357,7 @@ impl<T> DerefMut for PreemptGuard<T> {
     }
 }
 
-impl<T> Drop for PreemptGuard<T> {
+impl Drop for PreemptGuard<_> {
     #[inline(always)]
     fn drop(&mut self) {
         // no sched?
