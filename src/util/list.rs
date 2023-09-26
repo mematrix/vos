@@ -17,7 +17,7 @@ impl List {
     /// API call on this object is **Undefined Behavior**. [`init_empty`] or other init operations
     /// must be called before any other list operations.
     ///
-    /// [`init_empty`]: self::List::init_empty
+    /// [`init_empty`]: List::init_empty
     pub const fn new() -> Self {
         Self {
             prev: null_mut(),
@@ -136,4 +136,27 @@ pub fn count(head: &List) -> usize {
     }
 
     count
+}
+
+/// Return the `next` list item. Helper wrapper for the pointer type.
+#[inline(always)]
+pub fn next(cur: *mut List) -> *mut List {
+    unsafe {
+        (*cur).next
+    }
+}
+
+/// Iterate over the list, break if `handle` returns `false`.
+#[inline]
+pub fn for_each<F>(head: &mut List, handle: F)
+    where F: FnMut(*mut List) -> bool {
+    let head_ptr = head as *mut List;
+    let mut cur = head.next;
+    while cur != head_ptr {
+        let tmp = next(cur);
+        if !handle(cur) {
+            break;
+        }
+        cur = tmp;
+    }
 }
