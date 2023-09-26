@@ -3,4 +3,6 @@
 mod spin_lock;
 
 
-pub use spin_lock::*;
+pub mod lock {
+    pub use super::spin_lock::*;
+}
