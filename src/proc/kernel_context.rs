@@ -3,7 +3,7 @@
 
 use crate::arch::cpu;
 use crate::proc::task::TaskInfo;
-use crate::smp::CpuInfo;
+use crate::smp::{CpuInfo, current_cpu_info};
 
 
 /// Get task info struct of self.
@@ -21,9 +21,6 @@ pub fn self_task_info_mut<'a>() -> &'a mut TaskInfo {
 ///
 /// **Note**: This function **must** be used within the **preempt-disabled** context.
 #[inline(always)]
-pub unsafe fn this_cpu_info<'a>() -> &'a CpuInfo {
-    let cpu = self_task_info().trap_frame().cpu_stack;
-    unsafe {
-        &*((*cpu).tp as *const CpuInfo)
-    }
+pub unsafe fn this_cpu_info() -> &'static CpuInfo {
+    current_cpu_info()
 }

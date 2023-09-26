@@ -52,8 +52,8 @@ macro_rules! offset_of {
 /// - `field`: the name of the member within the struct.
 ///
 /// # Safety
-/// - The `ptr` must be the pointer points to the `field` within the struct, otherwise the
-/// result is **Undefined Behavior**.
+/// - The `ptr` must be the pointer points to the `field` within the struct, otherwise it is
+/// **Undefined Behavior**.
 #[macro_export]
 macro_rules! container_of {
     ($ptr:expr, $ty:path, $field:tt) => {{
@@ -71,8 +71,8 @@ macro_rules! container_of {
 /// - `field`: the name of the member within the struct.
 ///
 /// # Safety
-/// - The `ptr` must be the pointer points to the `field` within the struct, otherwise the
-/// result is **Undefined Behavior**.
+/// - The `ptr` must be the pointer points to the `field` within the struct, otherwise it is
+/// **Undefined Behavior**.
 ///
 /// [`container_of!`]: container_of
 #[macro_export]
