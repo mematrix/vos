@@ -7,15 +7,28 @@
 //! [`TaskTrapFrame`]: crate::proc::task::TaskTrapFrame
 //! [`TaskInfo`]: crate::proc::task::TaskInfo
 
+mod slub;
+
 use core::{mem::size_of, ptr::null_mut};
-use crate::base::sync::SpinLockPure;
+use core::ptr::addr_of_mut;
+use core::sync::atomic::Ordering;
+use crate::arch::atomic::compare_exchange_usize;
+use crate::arch::cpu;
+use crate::barrier;
+use crate::base::irq;
+use crate::base::sync::lock;
 use crate::errno::{E_INVALID, E_NO_SYS};
-use crate::mm::page::{gfp::*, alloc_pages, Page, PAGE_ALLOC_COSTLY_ORDER, PAGE_ALLOC_MAX_ORDER, GfpAllocFlag};
+use crate::mm::page::{
+    self, gfp::*, alloc_pages, Page,
+    PAGE_ALLOC_COSTLY_ORDER, PAGE_ALLOC_MAX_ORDER, GfpAllocFlag
+};
 use crate::mm::{PAGE_ORDER, PAGE_SIZE};
+use crate::mm::kmem::slub::Slub;
+use crate::sched::PreemptGuard;
 use crate::smp::{get_cpu_count, PerCpuPtr};
 use crate::util::align::{align_up, align_up_by, align_up_of};
 use crate::util::forward_list::ForwardList;
-use crate::util::list::List;
+use crate::util::list::{self, List};
 
 
 /// Flags to pass to [`KmemCache::create`]. The ones marked `Debug` are only valid if
@@ -80,22 +93,22 @@ pub struct KmemCache {
 #[repr(C)]
 struct KmemCacheCpu {
     /// Points to next available object.
-    free_list: ForwardList,
+    free_list: usize,
     // RISC-V provides the LR/SC atomic instructions, that can be used to implement a CAS
     // operation without the ABA problem. So we do not need this tid field.
     // pub tid: usize,
     /// Points to the slab from which we are allocating.
-    page: *mut Page,
+    page: *mut Slub,
     /// Partially allocated frozen slabs.
-    partial: *mut Page,
+    partial: *mut Slub,
 }
 
 /// The slab lists for all objects.
 #[repr(C)]
 struct KmemCacheNode {
-    list_lock: SpinLockPure,
-    nr_partial: usize,
     partial: List,
+    list_lock: lock::SpinLockPure,
+    nr_partial: u32,
 }
 
 //////////////////// kmem_cache impl /////////////////////////
@@ -448,15 +461,478 @@ fn init_kmem_cache_nodes(s: &mut KmemCache) -> bool {
 /// object. This is used for bootstrapping memory on a fresh node that has no slab structures yet.
 unsafe fn early_kmem_cache_node_alloc() {
     assert!((*KMEM_CACHE_NODE).size as usize >= size_of::<KmemCacheNode>());
-    //
+
+    let kmem_cache_node = unsafe { &mut *KMEM_CACHE_NODE };
+    let slab = alloc_slab(kmem_cache_node, GFP_NO_WAIT);
+    assert!(!slab.is_null());
+
+    let slab = &mut *slab;
+    let n = slab.get_free_list();
+    assert_ne!(n, 0);
+    let objects = slab.get_objects() - 1u16;
+    slab.set_counters(slub::make_counters(objects, slub::get_free_pointer(n), slab.get_frozen()));
+
+    let n = n as *mut KmemCacheNode;
+    kmem_cache_node.node = n;
+    init_kmem_cache_node(n);
+
+    // No locks need to be taken here as it has just been initialized and there is
+    // no concurrent access.
+    add_partial_no_lock(&mut *n, slab, false);
 }
 
-fn alloc_slab_page(flags: GfpAllocFlag, order: u32) -> *mut () {
-    //
+fn alloc_slab(s: &mut KmemCache, flags: GfpAllocFlag) -> *mut Slub {
+    let alloc_gfp = flags | s.alloc_flags;
+    let slab = alloc_slab_page(alloc_gfp, s.page_order as u32);
+    // #[unlikely]
+    if slab.is_null() {
+        return null_mut();
+    }
+
+    let start = page::page_to_address(Page::from_private(slab));
+    let slab = unsafe {
+        // SAFETY: page ptr is guaranteed to be aligned.
+        &mut *slab
+    };
+    // Set free list:
+    // This time no other thread will access the same page memory, so we use the non-atomic
+    // type directly.
+    slab.set_counters(slub::make_counters(s.object_count, start, false));
+    slab.set_cache(s);
+
+    let mut p = start;
+    for _ in 0..s.object_count {
+        let next = p + s.size as usize;
+        slub::set_free_pointer(p, next);
+        p = next;
+    }
+    slub::set_free_pointer(p, 0);
+
+    slab
+}
+
+fn alloc_slab_page(flags: GfpAllocFlag, order: u32) -> *mut Slub {
+    let page = page::get_free_pages(flags, order as usize);
+    // todo: page set 'slab' bit flag.
+    unsafe {
+        (&mut *page).cast_private()
+    }
+}
+
+/// Add slab to node partially allocated list. If `add_to_tail` is `true`, the `slab` will be
+/// appended to the tail of list, otherwise be inserted at list head.
+fn add_partial_no_lock(n: &mut KmemCacheNode, slab: &mut Slub, add_to_tail: bool) {
+    n.nr_partial += 1;
+    if add_to_tail {
+        list::tail_append(&mut n.partial, slab.get_slab_list());
+    } else {
+        list::head_append(&mut n.partial, slab.get_slab_list());
+    }
 }
 
 fn kmem_cache_alloc_node(s: &mut KmemCache, gfp_flags: GfpAllocFlag) -> *mut () {
 
+}
+
+/// Inlined fast-path so that allocation functions (kmalloc, kmem_cache_alloc) have the fast-path
+/// folded into their functions. So no function call overhead for requests that can be satisfied
+/// on the fast-path.
+///
+/// The fast-path works by first checking if the lockless `free_list` can be used. If not then
+/// [`slab_alloc_preempt_guard`] is called for slow processing. Otherwise we can simple pick the
+/// next object from the lockless `free_list`.
+///
+/// [`slab_alloc_preempt_guard`]: slab_alloc_preempt_guard
+#[inline(always)]
+fn slab_alloc_node(s: &mut KmemCache, gfp_flags: GfpAllocFlag, orig_size: u32) -> *mut () {
+    // Must read kmem_cache cpu data via this cpu ptr. Preemption is enabled. We may switch
+    // back and forth between cpus while reading from one cpu area. That does not matter as
+    // long as we end up on the original cpu again when doing the cmpxchg.
+    //
+    // We must guarantee that `free_list` of kmem_cache_cpu has not been changed by other
+    // thread (the **ABA** problem), this can be done by the RISC-V LR/SC instructions.
+    let object = loop {
+        let c = s.cpu_slab.get_raw();
+        barrier!();
+        unsafe {
+            let object = (*c).free_list;
+            let slab = (*c).page;
+            // [unlikely]
+            if object.is_empty() || slab.is_null() {
+                break slab_alloc_preempt_guard(s, gfp_flags, orig_size);
+            } else {
+                let next_object = slub::get_free_pointer(object);
+                barrier!();
+                // Read this cpu ptr again. Note that we may switch to another cpu again after
+                // the reading. But that does not matter because the following cmpxchg call
+                // will verify that the freelist have not been changed. If cmpxchg succeeds,
+                // the allocated object may be associated with a slab that belongs to another
+                // CpuCache because of preemption, but this is safe.
+                let cur_cpu = s.cpu_slab.get_raw();
+                let cpu_fp = addr_of_mut!((*cur_cpu).free_list);
+                if !compare_exchange_usize(cpu_fp, object, next_object) {
+                    continue;
+                }
+                // todo: prefetch free pointer.
+                break object as _;
+            }
+        }
+    };
+
+    object
+}
+
+/// A wrapper for `slab_alloc` for contexts where preemption is not yet disabled.
+fn slab_alloc_preempt_guard(s: &mut KmemCache, gfp_flags: GfpAllocFlag, orig_size: u32)
+    -> *mut() {
+    let p;
+    {
+        let mut c = s.cpu_slab.get_ref_mut();
+        p = slab_alloc(s, gfp_flags, &mut c, orig_size);
+    }
+
+    p
+}
+
+/// Slow path. The lockless freelist is empty.
+///
+/// Processing is still very fast if new objects have been freed to the regular freelist. In that
+/// case we simply take over the regular freelist as the lockless freelist and zap the regular
+/// freelist.
+///
+/// If that is not working then we fall back to the partial lists. We take the first element of
+/// the freelist as the object to allocate now and move the rest of the freelist to the lockless
+/// freelist.
+///
+/// And if we were unable to get a new slab from the partial slab list then we need to allocate a
+/// new slab. This is the slowest path since it involves a call to the page allocator and the setup
+/// of a new slab.
+///
+/// This function is to use when we know that preemption is already disabled.
+fn slab_alloc(s: &mut KmemCache, gfp_flags: GfpAllocFlag, c: &mut PreemptGuard<&mut KmemCacheCpu>, orig_size: u32)
+    -> *mut() {
+    let mut flags: usize = 0;
+    let mut freelist: usize = 0;
+
+    'reread_slab: loop {
+        let mut slab = read_once!(c.page);
+        'redo: loop {
+            'pre_new_slab: loop {
+                if slab.is_null() {
+                    break;  // goto new_slab
+                }
+
+                // redo label
+                flags = cpu::sstatus_cli_save();
+                if slab != c.page {
+                    cpu::sstatus_write(flags);
+                    continue 'reread_slab;
+                }
+                freelist = c.free_list;
+                if freelist != 0 {
+                    break 'reread_slab;
+                }
+                freelist = get_freelist(slab);
+                if freelist == 0 {
+                    c.page = null_mut();
+                    cpu::sstatus_write(flags);
+                    break 'pre_new_slab;
+                }
+
+                break 'reread_slab;
+            }
+
+            // new_slab label
+            loop {
+                if c.partial.is_null() {
+                    break 'redo;
+                }
+
+                flags = cpu::sstatus_cli_save();
+                // [[unlikely]]
+                if !c.page.is_null() {
+                    cpu::sstatus_write(flags);
+                    continue 'reread_slab;
+                }
+                if c.partial.is_null() {
+                    cpu::sstatus_write(flags);
+                    // we were preempted and partial list got empty.
+                    break 'redo;
+                }
+
+                slab = c.partial;
+                c.page = slab;
+                c.partial = slab.get_partial_next();
+                cpu::sstatus_write(flags);
+                continue 'redo;
+            }
+        }
+
+        // new_objects label
+        loop {
+            (freelist, slab) = get_partial_node(s, s.node);
+            if freelist != 0 {
+                break;
+            }
+
+            c.yield_and_run(|| slab = alloc_slab(s, gfp_flags));
+            c.update(|| s.cpu_slab.get_ref_mut_raw());
+            // unlikely
+            if slab.is_null() {
+                // error! slab out of memory
+                return null_mut();
+            }
+
+            // No other reference to the slab yet so we can muck around with it freely without
+            // cmpxchg.
+            freelist = slab.get_free_list();
+            slab.set_counters_part(s.object_count, 0, true);
+            // debug: inc slabs count in node struct.
+            break;
+        }
+
+        // check new slab --> ignore the impl currently.
+        // retry_load_slab label
+        loop {
+            flags = cpu::sstatus_cli_save();
+            // unlikely
+            if !c.page.is_null() {
+                let flush_freelist = c.free_list;
+                let flush_slab = c.page;
+                c.page = null_mut();
+                c.free_list = 0;
+                cpu::sstatus_write(flags);
+                // deactivate
+
+                continue;
+            }
+
+            c.page = slab;
+            // goto load_freelist
+            break 'reread_slab;
+        }
+    }
+
+    // load_freelist label
+    // `freelist` is pointing to the list of objects to be used. `page` is pointing to the slab
+    // from which the objects are obtained. That slab must be frozen for per cpu allocations to
+    // work.
+    assert!(c.page.get_frozen());
+    c.free_list = slub::get_free_pointer(freelist);
+    cpu::sstatus_write(flags);
+    freelist as _
+}
+
+fn get_freelist(slab: *mut Slub) -> usize {
+    let slab = unsafe { &mut *slab };
+    let free_info = unsafe { &slab.free_list.free };
+    let mut counter = free_info.load(Ordering::Acquire);
+    loop {
+        let freelist = slub::counters_get_free_list(counter);
+        let new_counter = slub::make_counters(slub::counters_get_objects(counter), 0, freelist != 0);
+        match free_info.compare_exchange_weak(counter, new_counter, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => break freelist,
+            Err(x) => counter = x,
+        }
+    }
+}
+
+/// Try to allocate a partial slab from a special node and lock it. Returns a list of objects
+/// (may be null) and the slab.
+fn get_partial_node(s: &mut KmemCache, n: *mut KmemCacheNode) -> (usize, *mut Slub) {
+    unsafe {
+        if n.is_null() || (*n).nr_partial == 0 {
+            return (0, null_mut());
+        }
+    }
+
+    let n = unsafe { &mut *n };
+    let mut object = 0usize;
+    let mut slab = null_mut();
+    let mut partial_slabs = 0u32;
+
+    let _guard = n.list_lock.lock_guard_irq_save();
+    // for each partial list
+    list::for_each(&mut n.partial, |cur| {
+        let cur_slab = crate::container_of_mut!(cur, Slub, list);
+        let ref_slab = unsafe { &mut *cur_slab };
+        let t = acquire_slab(s, n, ref_slab, object == 0);
+        if t == 0 {
+            return false;
+        }
+
+        if object == 0 {
+            slab = cur_slab;
+            object = t;
+        } else {
+            put_cpu_partial(s, ref_slab, false);
+            partial_slabs += 1;
+        }
+
+        // if partial_slabs not greater than limit, continue iterating.
+        partial_slabs <= s.cpu_partial_slabs / 2
+    });
+
+    (object, slab)
+}
+
+fn acquire_slab(s: &mut KmemCache, n: &mut KmemCacheNode, slab: &mut Slub, mode: bool) -> usize {
+    debug_assert!(n.list_lock.is_locked());
+    let counters = slab.get_counters();
+    // make sure slab is not frozen
+    assert!(!slub::counters_get_frozen(counters));
+    let new_counters = if mode {
+        let objects = slub::counters_get_objects(counters);
+        slub::make_counters(objects, 0, true)
+    } else {
+        slub::counters_set_frozen(counters, true)
+    };
+
+    let free_info = unsafe { &slab.free_list.free };
+    match free_info.compare_exchange(counters, new_counters, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {
+            remove_partial(n, slab);
+            // warn_on! freelist == 0
+            slub::counters_get_free_list(counters)
+        },
+        Err(_) => 0usize,
+    }
+}
+
+fn remove_partial(n: &mut KmemCacheNode, slab: &mut Slub) {
+    list::delete(unsafe { &mut slab.list.slab_list });
+    n.nr_partial -= 1;
+}
+
+/// Put a slab that was just frozen (in `acquire_slab`) into a partial slab slot if available.
+fn put_cpu_partial(s: &mut KmemCache, slab: &mut Slub, drain: bool) {
+    let mut slab_to_unfreeze = null_mut();
+    let mut slabs = 0u32;
+
+    let flags = irq::local_irq_save();
+
+    // irq disabled, so we read per-cpu variable without preempt-guard.
+    let mut old_slab = s.cpu_slab.get_ref_raw().partial;
+    if !old_slab.is_null() {
+        let tmp = unsafe { &*old_slab };
+        if drain && tmp.get_partial_slabs() >= s.cpu_partial_slabs {
+            // Partial array is full. Move the existing set to the node partial list.
+            slab_to_unfreeze = old_slab;
+            old_slab = null_mut();
+        } else {
+            slabs = tmp.get_partial_slabs();
+        }
+    }
+
+    slabs += 1;
+    slab.set_partial_slabs(slabs);
+    slab.set_partial_next(old_slab);
+    s.cpu_slab.get_ref_mut_raw().partial = slab as _;
+
+    irq::local_irq_restore(flags);
+
+    if !slab_to_unfreeze.is_null() {
+        unfreeze_partials(s, slab_to_unfreeze);
+    }
+}
+
+/// unfreeze the partial slab list.
+fn unfreeze_partials(s: &mut KmemCache, mut partial_slab: *mut Slub) {
+    if partial_slab.is_null() {
+        return;
+    }
+
+    let mut slab_to_discard = null_mut();
+    let n = unsafe { &mut *s.node };
+    {
+        let _guard = n.list_lock.lock_guard_irq_save();
+        while !partial_slab.is_null() {
+            let slab = unsafe { &mut *partial_slab };
+            partial_slab = slab.get_partial_next();
+
+            let mut old = slab.get_counters();
+            let counters = loop {
+                assert!(slub::counters_get_frozen(old));
+                let new = slub::counters_set_frozen(old, false);
+                match slab.get_atomic_counters().compare_exchange_weak(old, new, Ordering::AcqRel, Ordering::Acquire) {
+                    Ok(_) => break new,
+                    Err(v) => old = v,
+                }
+            };
+
+            // unlikely
+            if slub::counters_get_objects(counters) == 0 && n.nr_partial >= s.node_partial_slabs {
+                slab.set_partial_next(slab_to_discard);
+                slab_to_discard = slab as _;
+            } else {
+                add_partial_no_lock(n, slab, true);
+            }
+        }
+    }
+
+    while !slab_to_discard.is_null() {
+        let slab = slab_to_discard;
+        slab_to_discard = unsafe { &mut *slab }.get_partial_next();
+        free_slab(s, slab);
+    }
+}
+
+fn free_slab(s: &mut KmemCache, slab: *mut Slub) {
+    let p = Page::from_private(slab);
+    page::return_pages(p, s.page_order as usize);
+}
+
+fn deactivate_slab(s: &mut KmemCache, slab: &mut Slub, freelist: usize) {
+    enum SlabModes {
+        None,
+        Partial,
+        Free,
+        FullNoList,
+    }
+
+    let n = unsafe { &mut *s.node };
+    let tail = slab.get_free_list() != 0;
+    let mut mode = SlabModes::None;
+
+    // Stage one: Count the objects on cpu's freelist as free_delta and remember the last
+    // object in freelist_tail for later splicing.
+    let mut free_delta = 0u32;
+    let mut freelist_tail = 0usize;
+    let mut freelist_iter = freelist;
+    while freelist_iter != 0 {
+        let next_free = slub::get_free_pointer(freelist_iter);
+        if is_freelist_corrupted(s, slab, next_free) {
+            freelist_iter = 0;
+            break;
+        }
+
+        freelist_tail = freelist_iter;
+        free_delta += 1;
+        freelist_iter = next_free;
+    }
+}
+
+fn is_freelist_corrupted(s: &mut KmemCache, slab: &mut Slub, next_free: usize) -> bool {
+    !check_valid_pointer(s, slab, next_free)
+}
+
+/// Verify that a pointer has an address that is valid within a slab page.
+fn check_valid_pointer(s: &mut KmemCache, slab: &mut Slub, object: usize) -> bool {
+    if object == 0 {
+        return true;
+    }
+
+    let base = slab_address(slab);
+    let invalid = (object < base) ||
+        (object >= base + s.object_count as usize * s.size as usize) ||
+        ((object - base) % s.size != 0);
+    !invalid
+}
+
+/// Get the base address that is associated with a slab page.
+fn slab_address(slab: &mut Slub) -> usize {
+    let page = Page::from_private(slab as *mut Slub);
+    page::page_to_address(page)
 }
 
 fn free_kmem_cache_nodes(s: &mut KmemCache) {

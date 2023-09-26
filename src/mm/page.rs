@@ -9,7 +9,7 @@
 //! All address or pointer value returned from the allocation API functions are the **physical
 //! address**. The returned type of the allocation API may be either `usize` (physical address,
 //! points to the allocated memory) or [`Page`] struct (meta info of the page). Use
-//! [`page_address`] to convert a [`Page`] to a **physical address**.
+//! [`page_to_address`] to convert a [`Page`] to a **physical address**.
 //!
 //! ## Allocation API
 //!
@@ -37,8 +37,8 @@
 //! > If running on S-mode, the identity mapping table must cover all physical memory address range.
 //!
 //! [Chapter 6  Physical Page Allocation]: https://www.kernel.org/doc/gorman/html/understand/understand009.html
-//! [`Page`]: self::Page
-//! [`page_address`]: self::page_address
+//! [`Page`]: Page
+//! [`page_to_address`]: page_to_address
 
 use core::mem::size_of;
 use core::ptr::null_mut;
@@ -68,6 +68,7 @@ pub mod gfp {
     pub const GFP_RECLAIMABLE: GfpAllocFlag = 1u32 << 4;
 
     pub const GFP_KERNEL: GfpAllocFlag = 0u32; // todo
+    pub const GFP_NO_WAIT: GfpAllocFlag = 0u32;
 }
 
 // todo: remove `PageFlag`.
@@ -95,20 +96,20 @@ impl PageFlag {
 /// object will always guard to 0 and can be safety used, such as save the page alloc order.
 ///
 /// If a **page** is allocated, then the `Page` structure associated with it will be free to
-/// use to store private data, except for the last 4 bytes which are used to store the page
-/// flags. [`get_private`] method can be used to retrieve the private area start address, and
-/// [`get_private_size`] method can be used to get the available size of private area, this is
-/// a **const** function so it can be called at the compile-time context to do some static
-/// assertions. The private size is guaranteed to at least 28 bytes; the private data address
-/// is guaranteed to align with 16.
+/// use to store private data, except for the last 8 bytes which are used to store the page
+/// flags and ref count. [`get_private`] method can be used to retrieve the private area start
+/// address, and [`get_private_size`] method can be used to get the available size of private
+/// area, this is a **const** function so it can be called at the compile-time context to do
+/// some static assertions. The private size is guaranteed to at least 40 bytes; the private
+/// data address is guaranteed to be aligned with 16.
 ///
 /// The least 24 bits of the inner `flags` field are used by the Page allocator, while the most
-/// 8 bits can be used to store custom flags. See methods [`get_custom_flags`], [`set_custom_flags`]
-/// and [`replace_custom_flags`] for more info, note that though the param or return type is `u32`,
-/// only the least 8 bits is valid and used.
+/// 8 bits can be used to store custom flags. See methods [`get_custom_flags`],
+/// [`set_custom_flags`] and [`replace_custom_flags`] for more info, note that though the param
+/// or return type is `u32`, only the least 8 bits is valid and used.
 ///
-/// When the **page** is allocated, all instance methods are invalid except for the [`get_private`]
-/// and `flags` operation methods.
+/// When the **page** is allocated, all instance methods are invalid except for the
+/// [`get_private`], `ref_count` and `flags` operation methods.
 ///
 /// [`get_private`]: self::Page::get_private
 /// [`get_private_size`]: self::Page::get_private_size
@@ -118,21 +119,24 @@ impl PageFlag {
 #[repr(C)]
 pub struct Page {
     head: List,
-    padding: usize,
+    padding: [usize; 3],
     ref_count: AtomicU32,
-    /// bits\[7:0] store the idx of zone that self page belongs. bits\[23:8] store inner flags.
+    /// bits\[3:0] store the idx of zone that self page belongs. bits\[23:4] store inner flags.
     /// bits\[31:24] store custom flags.
     flags: u32,
 }
 
-// Assert the size of `Page` equals to multiple times of 32bytes.
-sa::const_assert_eq!(size_of::<Page>() % 32, 0);
+// Assert the size of `Page` equals to multiple times of 16bytes.
+sa::const_assert_eq!(size_of::<Page>() % 16, 0);
+
+/// Bits to store the zone idx. See [`Page::flags`](Page).
+const ZONE_IDX_BITS: u32 = 4;
 
 impl Page {
     /// Get the available size for private usage.
     #[inline(always)]
     pub const fn get_private_size() -> usize {
-        size_of::<Page>() - size_of::<u32>()
+        size_of::<Page>() - size_of::<u32>() * 2
     }
 
     /// Get a pointer of the private memory.
@@ -143,28 +147,48 @@ impl Page {
         self as *mut Page as *mut u8
     }
 
+    /// Get a pointer of the private memory region and cast to special type.
+    ///
+    /// **Note**: data in this memory may be in **uninitialized** state.
+    #[inline(always)]
+    pub fn cast_private<T>(&mut self) -> *mut T {
+        self.get_private() as _
+    }
+
+    /// Translate a pointer to the `Page` pointer.
+    ///
+    /// **Warning**: `p` **must** be fetched from ether [`get_private`] or [`cast_private`],
+    /// otherwise result is **undefined**.
+    ///
+    /// [`get_private`]: Page::get_private
+    /// [`cast_private`]: Page::cast_private
+    #[inline(always)]
+    pub fn from_private<T>(p: *mut T) -> *mut Page {
+        p as _
+    }
+
     /// Get the flags. **Note**: custom flags are also returned.
     #[inline(always)]
     pub fn read_flags(&self) -> u32 {
-        self.flags >> 8
+        self.flags >> ZONE_IDX_BITS
     }
 
     /// Check if the `flag` is set.
     #[inline(always)]
     pub fn is_flag_set(&self, flag: PageFlag) -> bool {
-        ((self.flags >> 8) & flag.val()) != 0
+        ((self.flags >> ZONE_IDX_BITS) & flag.val()) != 0
     }
 
     /// Set page flag.
     #[inline(always)]
     pub fn set_flag(&mut self, flag: PageFlag) {
-        self.flags |= flag.val() << 8;
+        self.flags |= flag.val() << ZONE_IDX_BITS;
     }
 
     /// Clear page flag.
     #[inline(always)]
     pub fn clear_flag(&mut self, flag: PageFlag) {
-        self.flags &= !(flag.val() << 8);
+        self.flags &= !(flag.val() << ZONE_IDX_BITS);
     }
 
     /// Get the custom flags.
@@ -199,17 +223,16 @@ impl Page {
         self.flags &= !(flag << 24);
     }
 
-    // todo: zone ids uses 4bits.
     /// Set zone idx.
     #[inline(always)]
     fn set_zone_idx(&mut self, idx: usize) {
-        self.flags = (self.flags & !0xffu32) | (idx & 0xffusize) as u32;
+        self.flags = (self.flags & !0x0fu32) | (idx & 0x0fusize) as u32;
     }
 
     /// Get zone idx.
     #[inline(always)]
     fn get_zone_idx(&self) -> usize {
-        (self.flags & 0xffu32) as usize
+        (self.flags & 0x0fu32) as usize
     }
 
     /// Get the ref count. **Note**: only available when page has been set [`PageFlag::Shared`] flag.
@@ -374,12 +397,12 @@ pub fn init(mem_regions: &[(usize, usize)]) {
 }
 
 /// Allocate a single page and return a struct page.
-pub fn get_free_page(flags: usize) -> *mut Page {
+pub fn get_free_page(flags: GfpAllocFlag) -> *mut Page {
     do_alloc_pages(flags, 0)
 }
 
 /// Allocate `2^order` number of pages and return a struct page.
-pub fn get_free_pages(flags: usize, order: usize) -> *mut Page {
+pub fn get_free_pages(flags: GfpAllocFlag, order: usize) -> *mut Page {
     do_alloc_pages(flags, order)
 }
 
@@ -391,7 +414,7 @@ pub fn get_free_pages(flags: usize, order: usize) -> *mut Page {
 /// **Call Convention**: See [the mod document].
 ///
 /// [the mod document]: self
-pub fn alloc_page(flags: usize) -> usize {
+pub fn alloc_page(flags: GfpAllocFlag) -> usize {
     let page = do_alloc_pages(flags, 0);
     page_to_address(page)
 }
@@ -404,7 +427,7 @@ pub fn alloc_page(flags: usize) -> usize {
 /// **Call Convention**: See [the mod document].
 ///
 /// [the mod document]: self
-pub fn alloc_pages(flags: usize, order: usize) -> usize {
+pub fn alloc_pages(flags: GfpAllocFlag, order: usize) -> usize {
     let page = do_alloc_pages(flags, order);
     page_to_address(page)
 }
@@ -418,7 +441,7 @@ pub fn alloc_pages(flags: usize, order: usize) -> usize {
 /// **Call Convention**: See [the mod document].
 ///
 /// [the mod document]: self
-pub fn alloc_zeroed_page(flags: usize) -> usize {
+pub fn alloc_zeroed_page(flags: GfpAllocFlag) -> usize {
     let ret = alloc_page(flags);
     if ret != 0 {
         let size = PAGE_SIZE / 8;
@@ -458,6 +481,7 @@ pub fn free_page(addr: usize) {
         return;
     }
 
+    debug_assert!(addr.trailing_zeros() >= PAGE_ORDER as u32);
     let page = address_to_page(addr);
     do_free_pages(page, 0);
 }
@@ -473,20 +497,15 @@ pub fn free_pages(addr: usize, order: usize) {
         return;
     }
 
+    debug_assert!(addr.trailing_zeros() >= PAGE_ORDER as u32);
     let page = address_to_page(addr);
     do_free_pages(page, order);
 }
 
-/// Get the **physical address** of a `page` struct.
-pub fn page_address(page: *const Page) -> usize {
-    page_to_address(page)
-}
-
-
-////////////////////// Inner Impl ///////////////////////////
-
-fn page_to_address(page: *const Page) -> usize {
+/// Get the **physical address** of a `Page` struct.
+pub fn page_to_address(page: *const Page) -> usize {
     unsafe {
+        // todo: debug assert instead of runtime check.
         // core::intrinsics::unlikely()
         if page.is_null() {
             return 0;
@@ -497,8 +516,8 @@ fn page_to_address(page: *const Page) -> usize {
     }
 }
 
-fn address_to_page(addr: usize) -> *mut Page {
-    debug_assert!(addr.trailing_zeros() >= PAGE_ORDER as u32);
+/// Convert a **valid physical address** to a `Page` struct.
+pub fn address_to_page(addr: usize) -> *mut Page {
     unsafe {
         // core::intrinsics::unlikely()
         if addr <= ALLOC_START {
@@ -510,7 +529,10 @@ fn address_to_page(addr: usize) -> *mut Page {
     }
 }
 
-fn do_alloc_pages(_flags: usize, order: usize) -> *mut Page {
+
+////////////////////// Inner Impl ///////////////////////////
+
+fn do_alloc_pages(_flags: GfpAllocFlag, order: usize) -> *mut Page {
     // todo: flags support.
     let size = 1usize << order;
     for zone_idx in 0..MAX_ZONE_COUNT {
